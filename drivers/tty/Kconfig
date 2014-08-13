@@ -466,4 +466,10 @@ config MIPS_EJTAG_FDC_KGDB_CHAN
 	help
 	  FDC channel number to use for KGDB.
 
+config SBSAUART_TTY
+	tristate "SBSA UART TTY Driver"
+	help
+	  Console and system TTY driver for the SBSA UART which is defined
+	  in the Server Base System Architecure document for ARM64 servers.
+
 endif # TTY
