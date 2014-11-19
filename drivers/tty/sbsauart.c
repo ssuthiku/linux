@@ -307,6 +307,9 @@ static int sbsa_tty_probe(struct platform_device *pdev)
 	qtty->console.device = sbsa_tty_console_device;
 	qtty->console.setup = sbsa_tty_console_setup;
 	qtty->console.flags = CON_PRINTBUFFER;
+	/* if no console= on cmdline, make this the console device */
+	if (!console_set_on_cmdline)
+		qtty->console.flags |= CON_CONSDEV;
 	qtty->console.index = pdev->id;
 	register_console(&qtty->console);
 
