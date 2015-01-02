@@ -1,4 +1,4 @@
-dtb-$(CONFIG_ARCH_SEATTLE) += amd-overdrive.dtb
+dtb-$(CONFIG_ARCH_SEATTLE) += amd-overdrive.dtb amd-overdrive-rev-a.dtb
 
 always		:= $(dtb-y)
 subdir-y	:= $(dts-dirs)
