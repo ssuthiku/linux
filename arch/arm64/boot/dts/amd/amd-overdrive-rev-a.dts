@@ -70,13 +70,5 @@
  * Seattle RevA specific stuff
  */
 &smb0 {
-	motherboard {
-		compatible = "simple-bus";
-		#address-cells = <2>;
-		#size-cells = <2>;
-		ranges;
-
-
-		/include/ "amd-seattle-xgbe-a.dtsi"
-	};
+	/include/ "amd-seattle-xgbe-a.dtsi"
 };
