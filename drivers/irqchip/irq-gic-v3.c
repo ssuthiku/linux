@@ -15,6 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/acpi.h>
 #include <linux/cpu.h>
 #include <linux/cpu_pm.h>
 #include <linux/delay.h>
@@ -880,7 +881,8 @@ static int __init gic_init_bases(void __iomem *dist_base,
 
 	set_handle_irq(gic_handle_irq);
 
-	if (IS_ENABLED(CONFIG_ARM_GIC_V3_ITS) && gic_dist_supports_lpis())
+	if (IS_ENABLED(CONFIG_ARM_GIC_V3_ITS) && gic_dist_supports_lpis()
+	    && irq_domain_token_to_of_node(domain_token))
 		its_init(domain_token, &gic_data.rdists, gic_data.domain);
 
 	gic_smp_init();
@@ -897,6 +899,16 @@ out_free:
 	return err;
 }
 
+static int __init gic_validate_dist_version(void __iomem *dist_base)
+{
+	u32 reg = readl_relaxed(dist_base + GICD_PIDR2) & GIC_PIDR2_ARCH_MASK;
+
+	if (reg != GIC_PIDR2_ARCH_GICv3 && reg != GIC_PIDR2_ARCH_GICv4)
+		return -ENODEV;
+
+	return 0;
+}
+
 #ifdef CONFIG_OF
 static int __init gic_of_init(struct device_node *node, struct device_node *parent)
 {
@@ -904,7 +916,6 @@ static int __init gic_of_init(struct device_node *node, struct device_node *pare
 	struct redist_region *rdist_regs;
 	u64 redist_stride;
 	u32 nr_redist_regions;
-	u32 reg;
 	int err, i;
 
 	dist_base = of_iomap(node, 0);
@@ -914,11 +925,10 @@ static int __init gic_of_init(struct device_node *node, struct device_node *pare
 		return -ENXIO;
 	}
 
-	reg = readl_relaxed(dist_base + GICD_PIDR2) & GIC_PIDR2_ARCH_MASK;
-	if (reg != GIC_PIDR2_ARCH_GICv3 && reg != GIC_PIDR2_ARCH_GICv4) {
+	err = gic_validate_dist_version(dist_base);
+	if (err) {
 		pr_err("%s: no distributor detected, giving up\n",
 			node->full_name);
-		err = -ENODEV;
 		goto out_unmap_dist;
 	}
 
@@ -965,4 +975,198 @@ out_unmap_dist:
 }
 
 IRQCHIP_DECLARE(gic_v3, "arm,gic-v3", gic_of_init);
+#endif
+
+#ifdef CONFIG_ACPI
+static struct redist_region *redist_regs __initdata;
+static u32 nr_redist_regions __initdata;
+
+static int __init
+gic_acpi_match_redist(struct acpi_subtable_header *header,
+		     const unsigned long end)
+{
+	struct acpi_madt_generic_redistributor *redist;
+
+	if (BAD_MADT_ENTRY(header, end))
+		return -EINVAL;
+
+	redist = (struct acpi_madt_generic_redistributor *)header;
+	if (!redist->base_address)
+		return -EINVAL;
+
+	return 0;
+}
+
+static int __init
+gic_acpi_match_gicc(struct acpi_subtable_header *header,
+			const unsigned long end)
+{
+	struct acpi_madt_generic_interrupt *gicc;
+
+	gicc = (struct acpi_madt_generic_interrupt *)header;
+
+	if (BAD_MADT_GICC_ENTRY(gicc, end))
+		return -EINVAL;
+
+	/*
+	 * If GICC is enabled but has no valid gicr base address, then it
+	 * means GICR base is not presented via GICC
+	 */
+	if ((gicc->flags & ACPI_MADT_ENABLED) && !gicc->gicr_base_address)
+		return -ENODEV;
+
+	return 0;
+}
+
+static bool __init acpi_gic_redist_is_present(void)
+{
+	int count;
+
+	count = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_REDISTRIBUTOR,
+				      gic_acpi_match_redist, 0);
+	if (count > 0)
+		return true;
+
+	count = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_INTERRUPT,
+				      gic_acpi_match_gicc, 0);
+	return count > 0;
+}
+
+static int __init
+gic_acpi_register_redist(phys_addr_t phys_base, u64 size)
+{
+	void __iomem *redist_base;
+
+	redist_base = ioremap(phys_base, size);
+	if (!redist_base) {
+		pr_err("Couldn't map GICR region @%llx\n", phys_base);
+		return -ENOMEM;
+	}
+
+	redist_regs[nr_redist_regions].phys_base = phys_base;
+	redist_regs[nr_redist_regions].redist_base = redist_base;
+	nr_redist_regions++;
+	return 0;
+}
+
+static int __init
+gic_acpi_parse_madt_redist(struct acpi_subtable_header *header,
+			const unsigned long end)
+{
+	struct acpi_madt_generic_redistributor *redist;
+
+	redist = (struct acpi_madt_generic_redistributor *)header;
+	return gic_acpi_register_redist(redist->base_address, redist->length);
+}
+
+static int gic_acpi_gsi_desc_populate(struct acpi_gsi_descriptor *data,
+				      u32 gsi, unsigned int irq_type)
+{
+	/*
+	 * Encode GSI and triggering information the way the GIC likes
+	 * them.
+	 */
+	if (WARN_ON(gsi < 16))
+		return -EINVAL;
+
+	if (gsi >= 32) {
+		data->param[0] = 0;		/* SPI */
+		data->param[1] = gsi - 32;
+		data->param[2] = irq_type;
+	} else {
+		data->param[0] = 1; 		/* PPI */
+		data->param[1] = gsi - 16;
+		data->param[2] = 0xff << 4 | irq_type;
+	}
+
+	data->param_count = 3;
+
+	return 0;
+}
+
+static bool __init gic_validate_dist(struct acpi_subtable_header *header,
+				     struct acpi_probe_entry *ape)
+{
+	struct acpi_madt_generic_distributor *dist;
+	dist = (struct acpi_madt_generic_distributor *)header;
+
+	return (dist->version == ape->driver_data &&
+		(dist->version != ACPI_MADT_GIC_VERSION_NONE ||
+		 acpi_gic_redist_is_present()));
+}
+
+#define ACPI_GICV3_DIST_MEM_SIZE (SZ_64K)
+
+static int __init
+gic_acpi_init(struct acpi_subtable_header *header, const unsigned long end)
+{
+	int count, i, err = 0;
+	struct acpi_madt_generic_distributor *dist;
+	void __iomem *dist_base;
+
+	/* Get distributor base address */
+	dist = (struct acpi_madt_generic_distributor *)header;
+	dist_base = ioremap(dist->base_address, ACPI_GICV3_DIST_MEM_SIZE);
+	if (!dist_base) {
+		pr_err("Unable to map GICD registers\n");
+		return -ENOMEM;
+	}
+
+	err = gic_validate_dist_version(dist_base);
+	if (err) {
+		pr_err("No distributor detected at @%p, giving up", dist_base);
+		goto out_dist_unmap;
+	}
+
+	/* Count how many redistributor regions we have */
+	count = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_REDISTRIBUTOR,
+				      gic_acpi_match_redist, 0);
+	if (count <= 0) {
+		pr_err("No valid GICR entries\n");
+		err = -EINVAL;
+		goto out_dist_unmap;
+	}
+
+	redist_regs = kzalloc(sizeof(*redist_regs) * count, GFP_KERNEL);
+	if (!redist_regs) {
+		err = -ENOMEM;
+		goto out_dist_unmap;
+	}
+
+	/* Collect redistributor base addresses */
+	count = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_REDISTRIBUTOR,
+				     gic_acpi_parse_madt_redist, 0);
+	if (count <= 0) {
+		pr_info("No valid GICR entries exist\n");
+		err = -EINVAL;
+		goto out_redist_unmap;
+	}
+
+	err = gic_init_bases(dist_base, redist_regs, nr_redist_regions, 0,
+			     (void *)dist->base_address);
+	if (err)
+		goto out_redist_unmap;
+
+	acpi_set_irq_model(ACPI_IRQ_MODEL_GIC, (void *)dist->base_address,
+			   gic_acpi_gsi_desc_populate);
+	return 0;
+
+out_redist_unmap:
+	for (i = 0; i < nr_redist_regions; i++)
+		if (redist_regs[i].redist_base)
+			iounmap(redist_regs[i].redist_base);
+	kfree(redist_regs);
+out_dist_unmap:
+	iounmap(dist_base);
+	return err;
+}
+IRQCHIP_ACPI_DECLARE(gic_v3, ACPI_MADT_TYPE_GENERIC_DISTRIBUTOR,
+		     gic_validate_dist, ACPI_MADT_GIC_VERSION_V3,
+		     gic_acpi_init);
+IRQCHIP_ACPI_DECLARE(gic_v3_maybe, ACPI_MADT_TYPE_GENERIC_DISTRIBUTOR,
+		     gic_validate_dist, ACPI_MADT_GIC_VERSION_NONE,
+		     gic_acpi_init);
+IRQCHIP_ACPI_DECLARE(gic_v4, ACPI_MADT_TYPE_GENERIC_DISTRIBUTOR,
+		     gic_validate_dist, ACPI_MADT_GIC_VERSION_V4,
+		     gic_acpi_init);
 #endif
