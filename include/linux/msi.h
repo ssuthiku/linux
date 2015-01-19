@@ -19,29 +19,30 @@ void __get_cached_msi_msg(struct msi_desc *entry, struct msi_msg *msg);
 void get_cached_msi_msg(unsigned int irq, struct msi_msg *msg);
 
 struct msi_desc {
-	struct {
-		__u8	is_msix	: 1;
-		__u8	multiple: 3;	/* log2 num of messages allocated */
-		__u8	multi_cap : 3;	/* log2 num of messages supported */
-		__u8	maskbit	: 1;	/* mask-pending bit supported ? */
-		__u8	is_64	: 1;	/* Address size: 0=32bit 1=64bit */
-		__u16	entry_nr;	/* specific enabled entry */
-		unsigned default_irq;	/* default pre-assigned irq */
-	} msi_attrib;
-
-	u32 masked;			/* mask bits */
-	unsigned int irq;
-	unsigned int nvec_used;		/* number of messages */
-	struct list_head list;
+	struct list_head		list;
+	unsigned int			irq;
+	unsigned int			nvec_used;	/* number of messages */
+	struct device *			dev;
+	struct msi_msg			msg;		/* Last set MSI message */
 
 	union {
-		void __iomem *mask_base;
-		u8 mask_pos;
+		struct {				/* For PCI MSI/MSI-X */
+			u32 masked;			/* mask bits */
+			struct {
+				__u8	is_msix	: 1;
+				__u8	multiple: 3;	/* log2 num of messages allocated */
+				__u8	multi_cap : 3;	/* log2 num of messages supported */
+				__u8	maskbit	: 1;	/* mask-pending bit supported ? */
+				__u8	is_64	: 1;	/* Address size: 0=32bit 1=64bit */
+				__u16	entry_nr;	/* specific enabled entry */
+				unsigned default_irq;	/* default pre-assigned irq */
+			} msi_attrib;
+			union {
+				u8	mask_pos;
+				void __iomem *mask_base;
+			};
+		};
 	};
-	struct device *dev;
-
-	/* Last set MSI message */
-	struct msi_msg msg;
 };
 
 /* Helpers to hide struct msi_desc implementation details */
