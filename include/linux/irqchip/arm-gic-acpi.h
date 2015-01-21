@@ -12,6 +12,8 @@
 
 #ifdef CONFIG_ACPI
 
+#include <linux/irqdomain.h>
+
 /*
  * Hard code here, we can not get memory size from MADT (but FDT does),
  * Actually no need to do that, because this size can be inferred
@@ -22,7 +24,8 @@
 
 struct acpi_table_header;
 
-int gic_v2_acpi_init(struct acpi_table_header *table);
+int gic_v2_acpi_init(struct acpi_table_header *table, struct irq_domain **domain);
+int gicv2m_acpi_init(struct acpi_table_header *table, struct irq_domain *parent);
 void acpi_gic_init(void);
 #else
 static inline void acpi_gic_init(void) { }

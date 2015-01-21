@@ -9,6 +9,7 @@
 
 #include <linux/delay.h>
 #include <linux/init.h>
+#include <linux/irqdomain.h>
 #include <linux/pci.h>
 #include <linux/pci_hotplug.h>
 #include <linux/module.h>
@@ -681,6 +682,52 @@ static bool pci_acpi_bus_match(struct device *dev)
 	return dev_is_pci(dev);
 }
 
+#ifdef CONFIG_PCI_MSI
+static int madt_count;
+
+static struct acpi_madt_generic_msi_frame *msi_frame;
+
+static int
+pci_acpi_parse_madt_msi(struct acpi_subtable_header *header,
+			const unsigned long end)
+{
+	struct acpi_madt_generic_msi_frame *frame;
+
+	frame = (struct acpi_madt_generic_msi_frame *)header;
+	if (BAD_MADT_ENTRY(frame, end))
+		return -EINVAL;
+
+	/* We currently support one MSI frame only */
+	if (!msi_frame)
+		msi_frame = frame;
+
+	return 0;
+}
+
+void pci_set_phb_acpi_msi_domain(struct pci_bus *bus)
+{
+	struct irq_domain *domain;
+
+	if (madt_count <= 0)
+		return;
+
+#ifdef CONFIG_GENERIC_MSI_IRQ_DOMAIN
+	/**
+	* Since ACPI 5.1 currently does not define
+	* a way to associate MSI frame ID to a device,
+	* we can only support single MSI frame at the moment.
+	*/
+	domain = irq_find_domain(IRQ_DOMAIN_REF_ACPI_MSI_FRAME, msi_frame);
+	if (!domain) {
+		pr_debug("Fail to find domain for MSI\n");
+		return;
+	}
+
+	dev_set_msi_domain(&bus->dev, domain);
+#endif /* CONFIG_GENERIC_MSI_IRQ_DOMAIN */
+}
+#endif /* CONFIG_PCI_MSI */
+
 static struct acpi_bus_type acpi_pci_bus = {
 	.name = "PCI",
 	.match = pci_acpi_bus_match,
@@ -706,6 +753,11 @@ static int __init acpi_pci_init(void)
 	ret = register_acpi_bus_type(&acpi_pci_bus);
 	if (ret)
 		return 0;
+
+#ifdef CONFIG_PCI_MSI
+	madt_count = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_MSI_FRAME,
+					  pci_acpi_parse_madt_msi, 0);
+#endif
 
 	pci_set_platform_pm(&acpi_pci_platform_pm);
 	acpi_pci_slot_init();

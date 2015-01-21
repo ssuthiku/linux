@@ -99,6 +99,7 @@ static inline void acpiphp_enumerate_slots(struct pci_bus *bus) { }
 static inline void acpiphp_remove_slots(struct pci_bus *bus) { }
 static inline void acpiphp_check_host_bridge(struct acpi_device *adev) { }
 #endif
+void pci_set_phb_acpi_msi_domain(struct pci_bus *bus);
 
 extern const u8 pci_acpi_dsm_uuid[];
 #define DEVICE_LABEL_DSM	0x07
@@ -108,6 +109,7 @@ extern const u8 pci_acpi_dsm_uuid[];
 #else	/* CONFIG_ACPI */
 static inline void acpi_pci_add_bus(struct pci_bus *bus) { }
 static inline void acpi_pci_remove_bus(struct pci_bus *bus) { }
+static inline void pci_acpi_set_phb_msi_domain(struct pci_bus *bus) { }
 #endif	/* CONFIG_ACPI */
 
 #ifdef CONFIG_ACPI_APEI

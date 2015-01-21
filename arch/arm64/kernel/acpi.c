@@ -213,9 +213,17 @@ void __init acpi_gic_init(void)
 	acpi_status status;
 	acpi_size tbl_size;
 	int err;
+	struct irq_domain *domain = NULL;
 
 	if (acpi_disabled)
 		return;
+
+	/**
+	 * NOTE: We need to declare this before we initialize the GIC
+	 *       so that we can use pointers to MADT table and MSI_FRAME sub-table
+	 *       for reference.
+	 */
+	acpi_gbl_permanent_mmap = 1;
 
 	status = acpi_get_table_with_size(ACPI_SIG_MADT, 0, &table, &tbl_size);
 	if (ACPI_FAILURE(status)) {
@@ -225,9 +233,11 @@ void __init acpi_gic_init(void)
 		return;
 	}
 
-	err = gic_v2_acpi_init(table);
-	if (err)
+	err = gic_v2_acpi_init(table, &domain);
+	if (err || !domain)
 		pr_err("Failed to initialize GIC IRQ controller");
+
+	acpi_gsi_set_domain(domain);
 
 	early_acpi_os_unmap_memory((char *)table, tbl_size);
 }
