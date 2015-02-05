@@ -1194,6 +1194,9 @@ EXPORT_SYMBOL_GPL(pci_load_and_free_saved_state);
 
 int __weak pcibios_enable_device(struct pci_dev *dev, int bars)
 {
+	if (pci_has_flag(PCI_PROBE_ONLY))
+		return 0;
+
 	return pci_enable_resources(dev, bars);
 }
 
