@@ -162,8 +162,10 @@ static struct resource pic_edgectrl_iores = {
 	.flags = IORESOURCE_BUSY,
 };
 
-static int i8259_host_match(struct irq_domain *h, struct device_node *node)
+static int i8259_host_match(struct irq_domain *h,
+			    enum irq_domain_ref_type type, void *node)
 {
+	WARN_ON(type != IRQ_DOMAIN_REF_OF_DEV_NODE);
 	return h->of_node == NULL || h->of_node == node;
 }
 

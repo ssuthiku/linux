@@ -298,10 +298,12 @@ int xics_get_irq_server(unsigned int virq, const struct cpumask *cpumask,
 }
 #endif /* CONFIG_SMP */
 
-static int xics_host_match(struct irq_domain *h, struct device_node *node)
+static int xics_host_match(struct irq_domain *h,
+			      enum irq_domain_ref_type type, void *node)
 {
 	struct ics *ics;
 
+	WARN_ON(type != IRQ_DOMAIN_REF_OF_DEV_NODE);
 	list_for_each_entry(ics, &ics_list, link)
 		if (ics->host_match(ics, node))
 			return 1;

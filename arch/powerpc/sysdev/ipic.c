@@ -671,8 +671,10 @@ static struct irq_chip ipic_edge_irq_chip = {
 	.irq_set_type	= ipic_set_irq_type,
 };
 
-static int ipic_host_match(struct irq_domain *h, struct device_node *node)
+static int ipic_host_match(struct irq_domain *h,
+			   enum irq_domain_ref_type type, void *node)
 {
+	WARN_ON(type != IRQ_DOMAIN_REF_OF_DEV_NODE);
 	/* Exact match, unless ipic node is NULL */
 	return h->of_node == NULL || h->of_node == node;
 }

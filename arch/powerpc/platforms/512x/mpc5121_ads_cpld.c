@@ -123,8 +123,10 @@ cpld_pic_cascade(unsigned int irq, struct irq_desc *desc)
 }
 
 static int
-cpld_pic_host_match(struct irq_domain *h, struct device_node *node)
+cpld_pic_host_match(struct irq_domain *h,
+		    enum irq_domain_ref_type type, void *node)
 {
+	WARN_ON(type != IRQ_DOMAIN_REF_OF_DEV_NODE);
 	return cpld_pic_node == node;
 }
 

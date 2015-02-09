@@ -1007,8 +1007,10 @@ static struct irq_chip mpic_irq_ht_chip = {
 #endif /* CONFIG_MPIC_U3_HT_IRQS */
 
 
-static int mpic_host_match(struct irq_domain *h, struct device_node *node)
+static int mpic_host_match(struct irq_domain *h,
+			   enum irq_domain_ref_type type, void *node)
 {
+	WARN_ON(type != IRQ_DOMAIN_REF_OF_DEV_NODE);
 	/* Exact match, unless mpic node is NULL */
 	return h->of_node == NULL || h->of_node == node;
 }
