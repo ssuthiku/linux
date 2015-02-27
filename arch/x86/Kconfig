@@ -149,6 +149,7 @@ config X86
 	select VIRT_TO_BUS
 	select X86_DEV_DMA_OPS			if X86_64
 	select X86_FEATURE_NAMES		if PROC_FS
+	select HAVE_PCI_ECAM
 
 config INSTRUCTION_DECODER
 	def_bool y
@@ -2282,6 +2283,7 @@ config PCI_DIRECT
 
 config PCI_MMCONFIG
 	def_bool y
+	select PCI_ECAM
 	depends on X86_32 && PCI && (ACPI || SFI) && (PCI_GOMMCONFIG || PCI_GOANY)
 
 config PCI_OLPC
@@ -2299,6 +2301,7 @@ config PCI_DOMAINS
 
 config PCI_MMCONFIG
 	bool "Support mmconfig PCI config space access"
+	select PCI_ECAM
 	depends on X86_64 && PCI && ACPI
 
 config PCI_CNB20LE_QUIRK
