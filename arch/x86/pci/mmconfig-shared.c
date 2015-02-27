@@ -31,6 +31,118 @@ static DEFINE_MUTEX(pci_mmcfg_lock);
 
 LIST_HEAD(pci_mmcfg_list);
 
+static u32
+pci_mmconfig_generic_read(int len, void __iomem *addr)
+{
+	u32 data = 0;
+
+	switch (len) {
+	case 1:
+		data = readb(addr);
+		break;
+	case 2:
+		data = readw(addr);
+		break;
+	case 4:
+		data = readl(addr);
+		break;
+	}
+
+	return data;
+}
+
+static void
+pci_mmconfig_generic_write(int len, void __iomem *addr, u32 value)
+{
+	switch (len) {
+	case 1:
+		writeb(value, addr);
+		break;
+	case 2:
+		writew(value, addr);
+		break;
+	case 4:
+		writel(value, addr);
+		break;
+	}
+}
+
+static struct pci_mmcfg_mmio_ops pci_mmcfg_mmio_default = {
+	.read = pci_mmconfig_generic_read,
+	.write = pci_mmconfig_generic_write,
+};
+
+static struct pci_mmcfg_mmio_ops *pci_mmcfg_mmio = &pci_mmcfg_mmio_default;
+
+static u32
+pci_mmconfig_amd_read(int len, void __iomem *addr)
+{
+	u32 data = 0;
+
+	switch (len) {
+	case 1:
+		data = mmio_config_readb(addr);
+		break;
+	case 2:
+		data = mmio_config_readw(addr);
+		break;
+	case 4:
+		data = mmio_config_readl(addr);
+		break;
+	}
+
+	return data;
+}
+
+static void
+pci_mmconfig_amd_write(int len, void __iomem *addr, u32 value)
+{
+	switch (len) {
+	case 1:
+		mmio_config_writeb(addr, value);
+		break;
+	case 2:
+		mmio_config_writew(addr, value);
+		break;
+	case 4:
+		mmio_config_writel(addr, value);
+		break;
+	}
+}
+
+static struct pci_mmcfg_mmio_ops pci_mmcfg_mmio_amd_fam10h = {
+	.read = pci_mmconfig_amd_read,
+	.write = pci_mmconfig_amd_write,
+};
+
+void
+pci_mmconfig_register_mmio(struct pci_mmcfg_mmio_ops *ops)
+{
+	pci_mmcfg_mmio = ops;
+}
+
+u32
+pci_mmio_read(int len, void __iomem *addr)
+{
+	if (!pci_mmcfg_mmio) {
+		pr_err("PCI config space has no accessors !");
+		return 0;
+	}
+
+	return pci_mmcfg_mmio->read(len, addr);
+}
+
+void
+pci_mmio_write(int len, void __iomem *addr, u32 value)
+{
+	if (!pci_mmcfg_mmio) {
+		pr_err("PCI config space has no accessors !");
+		return;
+	}
+
+	pci_mmcfg_mmio->write(len, addr, value);
+}
+
 static void __init pci_mmconfig_remove(struct pci_mmcfg_region *cfg)
 {
 	if (cfg->res.parent)
@@ -230,6 +342,8 @@ static const char *__init pci_mmcfg_amd_fam10h(void)
 			free_all_mmcfg();
 			return NULL;
 		}
+
+	pci_mmconfig_register_mmio(&pci_mmcfg_mmio_amd_fam10h);
 
 	return "AMD Family 10h NB";
 }

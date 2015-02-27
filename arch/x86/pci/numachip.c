@@ -51,17 +51,7 @@ err:		*value = -1;
 		goto err;
 	}
 
-	switch (len) {
-	case 1:
-		*value = mmio_config_readb(addr + reg);
-		break;
-	case 2:
-		*value = mmio_config_readw(addr + reg);
-		break;
-	case 4:
-		*value = mmio_config_readl(addr + reg);
-		break;
-	}
+	*value = pci_mmio_read(len, addr + reg);
 	rcu_read_unlock();
 
 	return 0;
@@ -87,17 +77,7 @@ static int pci_mmcfg_write_numachip(unsigned int seg, unsigned int bus,
 		return -EINVAL;
 	}
 
-	switch (len) {
-	case 1:
-		mmio_config_writeb(addr + reg, value);
-		break;
-	case 2:
-		mmio_config_writew(addr + reg, value);
-		break;
-	case 4:
-		mmio_config_writel(addr + reg, value);
-		break;
-	}
+	pci_mmio_write(len, addr + reg, value);
 	rcu_read_unlock();
 
 	return 0;
