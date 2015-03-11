@@ -150,6 +150,7 @@ config X86
 	select X86_DEV_DMA_OPS			if X86_64
 	select X86_FEATURE_NAMES		if PROC_FS
 	select HAVE_PCI_ECAM
+	select GENERIC_PCI_ECAM			if X86_64
 
 config INSTRUCTION_DECODER
 	def_bool y
