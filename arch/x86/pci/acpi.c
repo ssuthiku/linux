@@ -213,7 +213,7 @@ static int setup_mcfg_map(struct pci_root_info *info, u16 seg, u8 start,
 static void teardown_mcfg_map(struct pci_root_info *info)
 {
 	if (info->mcfg_added) {
-		pci_mmconfig_delete(info->segment, info->start_bus,
+		pci_ecam_delete(info->segment, info->start_bus,
 				    info->end_bus);
 		info->mcfg_added = false;
 	}

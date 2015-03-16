@@ -30,8 +30,8 @@ static bool pci_mmcfg_running_state;
 static bool pci_mmcfg_arch_init_failed;
 
 const struct pci_raw_ops pci_mmcfg = {
-	.read =		pci_mmcfg_read,
-	.write =	pci_mmcfg_write,
+	.read =		pci_ecam_read,
+	.write =	pci_ecam_write,
 };
 
 static u32
@@ -70,7 +70,7 @@ pci_mmconfig_amd_write(int len, void __iomem *addr, u32 value)
 	}
 }
 
-static struct pci_mmcfg_mmio_ops pci_mmcfg_mmio_amd_fam10h = {
+static struct pci_ecam_mmio_ops pci_mmcfg_mmio_amd_fam10h = {
 	.read = pci_mmconfig_amd_read,
 	.write = pci_mmconfig_amd_write,
 };
@@ -84,7 +84,7 @@ static const char *__init pci_mmcfg_e7520(void)
 	if (win == 0x0000 || win == 0xf000)
 		return NULL;
 
-	if (pci_mmconfig_add(0, 0, 255, win << 16) == NULL)
+	if (pci_ecam_add(0, 0, 255, win << 16) == NULL)
 		return NULL;
 
 	return "Intel Corporation E7520 Memory Controller Hub";
@@ -128,7 +128,7 @@ static const char *__init pci_mmcfg_intel_945(void)
 	if ((pciexbar & mask) >= 0xf0000000U)
 		return NULL;
 
-	if (pci_mmconfig_add(0, 0, (len >> 20) - 1, pciexbar & mask) == NULL)
+	if (pci_ecam_add(0, 0, (len >> 20) - 1, pciexbar & mask) == NULL)
 		return NULL;
 
 	return "Intel Corporation 945G/GZ/P/PL Express Memory Controller Hub";
@@ -175,13 +175,13 @@ static const char *__init pci_mmcfg_amd_fam10h(void)
 
 	end_bus = (1 << busnbits) - 1;
 	for (i = 0; i < (1 << segnbits); i++)
-		if (pci_mmconfig_add(i, 0, end_bus,
+		if (pci_ecam_add(i, 0, end_bus,
 				     base + (1<<28) * i) == NULL) {
-			free_all_mmcfg();
+			pci_ecam_free_all();
 			return NULL;
 		}
 
-	pci_mmconfig_register_mmio(&pci_mmcfg_mmio_amd_fam10h);
+	pci_ecam_register_mmio(&pci_mmcfg_mmio_amd_fam10h);
 
 	return "AMD Family 10h NB";
 }
@@ -210,7 +210,7 @@ static const char *__init pci_mmcfg_nvidia_mcp55(void)
 	/*
 	 * do check if amd fam10h already took over
 	 */
-	if (!acpi_disabled || !list_empty(&pci_mmcfg_list) || mcp55_checked)
+	if (!acpi_disabled || !list_empty(&pci_ecam_list) || mcp55_checked)
 		return NULL;
 
 	mcp55_checked = true;
@@ -239,7 +239,7 @@ static const char *__init pci_mmcfg_nvidia_mcp55(void)
 		base <<= extcfg_base_lshift;
 		start = (extcfg & extcfg_start_mask) >> extcfg_start_shift;
 		end = start + extcfg_sizebus[size_index] - 1;
-		if (pci_mmconfig_add(0, start, end, base) == NULL)
+		if (pci_ecam_add(0, start, end, base) == NULL)
 			continue;
 		mcp55_mmconf_found++;
 	}
@@ -273,15 +273,15 @@ static const struct pci_mmcfg_hostbridge_probe pci_mmcfg_probes[] __initconst = 
 
 static void __init pci_mmcfg_check_end_bus_number(void)
 {
-	struct pci_mmcfg_region *cfg, *cfgx;
+	struct pci_ecam_region *cfg, *cfgx;
 
 	/* Fixup overlaps */
-	list_for_each_entry(cfg, &pci_mmcfg_list, list) {
+	list_for_each_entry(cfg, &pci_ecam_list, list) {
 		if (cfg->end_bus < cfg->start_bus)
 			cfg->end_bus = 255;
 
 		/* Don't access the list head ! */
-		if (cfg->list.next == &pci_mmcfg_list)
+		if (cfg->list.next == &pci_ecam_list)
 			break;
 
 		cfgx = list_entry(cfg->list.next, typeof(*cfg), list);
@@ -301,7 +301,7 @@ static int __init pci_mmcfg_check_hostbridge(void)
 	if (!raw_pci_ops)
 		return 0;
 
-	free_all_mmcfg();
+	pci_ecam_free_all();
 
 	for (i = 0; i < ARRAY_SIZE(pci_mmcfg_probes); i++) {
 		bus =  pci_mmcfg_probes[i].bus;
@@ -322,7 +322,7 @@ static int __init pci_mmcfg_check_hostbridge(void)
 	/* some end_bus_number is crazy, fix it */
 	pci_mmcfg_check_end_bus_number();
 
-	return !list_empty(&pci_mmcfg_list);
+	return !list_empty(&pci_ecam_list);
 }
 
 static acpi_status check_mcfg_resource(struct acpi_resource *res, void *data)
@@ -395,7 +395,7 @@ static int is_acpi_reserved(u64 start, u64 end, unsigned not_used)
 typedef int (*check_reserved_t)(u64 start, u64 end, unsigned type);
 
 static int __ref is_mmconf_reserved(check_reserved_t is_reserved,
-				    struct pci_mmcfg_region *cfg,
+				    struct pci_ecam_region *cfg,
 				    struct device *dev, int with_e820)
 {
 	u64 addr = cfg->res.start;
@@ -425,8 +425,8 @@ static int __ref is_mmconf_reserved(check_reserved_t is_reserved,
 		cfg->end_bus = cfg->start_bus + ((size>>20) - 1);
 		num_buses = cfg->end_bus - cfg->start_bus + 1;
 		cfg->res.end = cfg->res.start +
-		    PCI_MMCFG_BUS_OFFSET(num_buses) - 1;
-		snprintf(cfg->name, PCI_MMCFG_RESOURCE_NAME_LEN,
+		    PCI_ECAM_BUS_OFFSET(num_buses) - 1;
+		snprintf(cfg->name, PCI_ECAM_RESOURCE_NAME_LEN,
 			 "PCI MMCONFIG %04x [bus %02x-%02x]",
 			 cfg->segment, cfg->start_bus, cfg->end_bus);
 
@@ -447,7 +447,7 @@ static int __ref is_mmconf_reserved(check_reserved_t is_reserved,
 }
 
 static int __ref pci_mmcfg_check_reserved(struct device *dev,
-		  struct pci_mmcfg_region *cfg, int early)
+		  struct pci_ecam_region *cfg, int early)
 {
 	if (!early && !acpi_disabled) {
 		if (is_mmconf_reserved(is_acpi_reserved, cfg, dev, 0))
@@ -484,12 +484,12 @@ static int __ref pci_mmcfg_check_reserved(struct device *dev,
 
 static void __init pci_mmcfg_reject_broken(int early)
 {
-	struct pci_mmcfg_region *cfg;
+	struct pci_ecam_region *cfg;
 
-	list_for_each_entry(cfg, &pci_mmcfg_list, list) {
+	list_for_each_entry(cfg, &pci_ecam_list, list) {
 		if (pci_mmcfg_check_reserved(NULL, cfg, early) == 0) {
 			pr_info(PREFIX "not using MMCONFIG\n");
-			free_all_mmcfg();
+			pci_ecam_free_all();
 			return;
 		}
 	}
@@ -525,13 +525,13 @@ extern int (*arch_apei_filter_addr)(int (*func)(__u64 start, __u64 size,
 static int pci_mmcfg_for_each_region(int (*func)(__u64 start, __u64 size,
 				     void *data), void *data)
 {
-	struct pci_mmcfg_region *cfg;
+	struct pci_ecam_region *cfg;
 	int rc;
 
-	if (list_empty(&pci_mmcfg_list))
+	if (list_empty(&pci_ecam_list))
 		return 0;
 
-	list_for_each_entry(cfg, &pci_mmcfg_list, list) {
+	list_for_each_entry(cfg, &pci_ecam_list, list) {
 		rc = func(cfg->res.start, resource_size(&cfg->res), data);
 		if (rc)
 			return rc;
@@ -547,24 +547,24 @@ static int pci_mmcfg_for_each_region(int (*func)(__u64 start, __u64 size,
 static void __init __pci_mmcfg_init(int early)
 {
 	pci_mmcfg_reject_broken(early);
-	if (list_empty(&pci_mmcfg_list))
+	if (list_empty(&pci_ecam_list))
 		return;
 
 	if (pcibios_last_bus < 0) {
-		const struct pci_mmcfg_region *cfg;
+		const struct pci_ecam_region *cfg;
 
-		list_for_each_entry(cfg, &pci_mmcfg_list, list) {
+		list_for_each_entry(cfg, &pci_ecam_list, list) {
 			if (cfg->segment)
 				break;
 			pcibios_last_bus = cfg->end_bus;
 		}
 	}
 
-	if (pci_mmcfg_arch_init()) {
+	if (pci_ecam_arch_init()) {
 		raw_pci_ext_ops = &pci_mmcfg;
 		pci_probe = (pci_probe & ~PCI_PROBE_MASK) | PCI_PROBE_MMCONF;
 	} else {
-		free_all_mmcfg();
+		pci_ecam_free_all();
 		pci_mmcfg_arch_init_failed = true;
 	}
 }
@@ -602,7 +602,7 @@ void __init pci_mmcfg_late_init(void)
 
 static int __init pci_mmcfg_late_insert_resources(void)
 {
-	struct pci_mmcfg_region *cfg;
+	struct pci_ecam_region *cfg;
 
 	pci_mmcfg_running_state = true;
 
@@ -615,7 +615,7 @@ static int __init pci_mmcfg_late_insert_resources(void)
 	 * marked so it won't cause request errors when __request_region is
 	 * called.
 	 */
-	list_for_each_entry(cfg, &pci_mmcfg_list, list)
+	list_for_each_entry(cfg, &pci_ecam_list, list)
 		if (!cfg->res.parent)
 			insert_resource(&iomem_resource, &cfg->res);
 
@@ -635,7 +635,7 @@ int pci_mmconfig_insert(struct device *dev, u16 seg, u8 start, u8 end,
 {
 	int rc;
 	struct resource *tmp = NULL;
-	struct pci_mmcfg_region *cfg;
+	struct pci_ecam_region *cfg;
 
 	if (!(pci_probe & PCI_PROBE_MMCONF) || pci_mmcfg_arch_init_failed)
 		return -ENODEV;
@@ -644,7 +644,7 @@ int pci_mmconfig_insert(struct device *dev, u16 seg, u8 start, u8 end,
 		return -EINVAL;
 
 	rcu_read_lock();
-	cfg = pci_mmconfig_lookup(seg, start);
+	cfg = pci_ecam_lookup(seg, start);
 	rcu_read_unlock();
 	if (cfg)
 		return -EEXIST;
@@ -653,7 +653,7 @@ int pci_mmconfig_insert(struct device *dev, u16 seg, u8 start, u8 end,
  		return -EINVAL;
 
 	rc = -EBUSY;
-	cfg = pci_mmconfig_alloc(seg, start, end, addr);
+	cfg = pci_ecam_alloc(seg, start, end, addr);
 	if (cfg == NULL) {
 		dev_warn(dev, "fail to add MMCONFIG (out of memory)\n");
 		return -ENOMEM;
@@ -674,7 +674,7 @@ int pci_mmconfig_insert(struct device *dev, u16 seg, u8 start, u8 end,
 		goto error;
 	}
 
-	rc = pci_mmconfig_inject(cfg);
+	rc = pci_ecam_inject(cfg);
 	if (rc)
 		goto error;
 
