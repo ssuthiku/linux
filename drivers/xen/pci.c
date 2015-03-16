@@ -218,7 +218,7 @@ arch_initcall(register_xen_pci_notifier);
 #ifdef CONFIG_PCI_MMCONFIG
 static int __init xen_mcfg_late(void)
 {
-	struct pci_mmcfg_region *cfg;
+	struct pci_ecam_region *cfg;
 	int rc;
 
 	if (!xen_initial_domain())
@@ -227,11 +227,11 @@ static int __init xen_mcfg_late(void)
 	if ((pci_probe & PCI_PROBE_MMCONF) == 0)
 		return 0;
 
-	if (list_empty(&pci_mmcfg_list))
+	if (list_empty(&pci_ecam_list))
 		return 0;
 
 	/* Check whether they are in the right area. */
-	list_for_each_entry(cfg, &pci_mmcfg_list, list) {
+	list_for_each_entry(cfg, &pci_ecam_list, list) {
 		struct physdev_pci_mmcfg_reserved r;
 
 		r.address = cfg->address;
