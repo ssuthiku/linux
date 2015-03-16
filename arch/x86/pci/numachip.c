@@ -21,10 +21,10 @@ static u8 limit __read_mostly;
 
 static inline char __iomem *pci_dev_base(unsigned int seg, unsigned int bus, unsigned int devfn)
 {
-	struct pci_mmcfg_region *cfg = pci_mmconfig_lookup(seg, bus);
+	struct pci_ecam_region *cfg = pci_ecam_lookup(seg, bus);
 
 	if (cfg && cfg->virt)
-		return cfg->virt + (PCI_MMCFG_BUS_OFFSET(bus) | (devfn << 12));
+		return cfg->virt + (PCI_ECAM_BUS_OFFSET(bus) | (devfn << 12));
 	return NULL;
 }
 

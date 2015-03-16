@@ -23,13 +23,13 @@
 int __weak raw_pci_read(unsigned int domain, unsigned int bus,
 			unsigned int devfn, int reg, int len, u32 *val)
 {
-	return pci_mmcfg_read(domain, bus, devfn, reg, len, val);
+	return pci_ecam_read(domain, bus, devfn, reg, len, val);
 }
 
 int __weak raw_pci_write(unsigned int domain, unsigned int bus,
 			 unsigned int devfn, int reg, int len, u32 val)
 {
-	return pci_mmcfg_write(domain, bus, devfn, reg, len, val);
+	return pci_ecam_write(domain, bus, devfn, reg, len, val);
 }
 
 int __init acpi_parse_mcfg(struct acpi_table_header *header)
@@ -45,7 +45,7 @@ int __init acpi_parse_mcfg(struct acpi_table_header *header)
 	mcfg = (struct acpi_table_mcfg *)header;
 
 	/* how many config structures do we have */
-	free_all_mmcfg();
+	pci_ecam_free_all();
 	entries = 0;
 	i = header->length - sizeof(struct acpi_table_mcfg);
 	while (i >= sizeof(struct acpi_mcfg_allocation)) {
@@ -61,14 +61,14 @@ int __init acpi_parse_mcfg(struct acpi_table_header *header)
 	for (i = 0; i < entries; i++) {
 		cfg = &cfg_table[i];
 		if (acpi_mcfg_check_entry(mcfg, cfg)) {
-			free_all_mmcfg();
+			pci_ecam_free_all();
 			return -ENODEV;
 		}
 
 		if (pci_ecam_add(cfg->pci_segment, cfg->start_bus_number,
 				 cfg->end_bus_number, cfg->address) == NULL) {
 			pr_warn(PREFIX "no memory for MCFG entries\n");
-			free_all_mmcfg();
+			pci_ecam_free_all();
 			return -ENOMEM;
 		}
 	}
@@ -89,15 +89,15 @@ void __init __weak pci_mmcfg_early_init(void)
 
 void __init __weak pci_mmcfg_late_init(void)
 {
-	struct pci_mmcfg_region *cfg;
+	struct pci_ecam_region *cfg;
 
 	acpi_table_parse(ACPI_SIG_MCFG, acpi_parse_mcfg);
 
-	if (list_empty(&pci_mmcfg_list))
+	if (list_empty(&pci_ecam_list))
 		return;
-	if (!pci_mmcfg_arch_init())
-		free_all_mmcfg();
+	if (!pci_ecam_arch_init())
+		pci_ecam_free_all();
 
-	list_for_each_entry(cfg, &pci_mmcfg_list, list)
+	list_for_each_entry(cfg, &pci_ecam_list, list)
 		insert_resource(&iomem_resource, &cfg->res);
 }

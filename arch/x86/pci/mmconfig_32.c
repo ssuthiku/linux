@@ -28,7 +28,7 @@ static int mmcfg_last_accessed_cpu;
  */
 static u32 get_base_addr(unsigned int seg, int bus, unsigned devfn)
 {
-	struct pci_mmcfg_region *cfg = pci_mmconfig_lookup(seg, bus);
+	struct pci_ecam_region *cfg = pci_ecam_lookup(seg, bus);
 
 	if (cfg)
 		return cfg->address;
@@ -40,7 +40,7 @@ static u32 get_base_addr(unsigned int seg, int bus, unsigned devfn)
  */
 static void pci_exp_set_dev_base(unsigned int base, int bus, int devfn)
 {
-	u32 dev_base = base | PCI_MMCFG_BUS_OFFSET(bus) | (devfn << 12);
+	u32 dev_base = base | PCI_ECAM_BUS_OFFSET(bus) | (devfn << 12);
 	int cpu = smp_processor_id();
 	if (dev_base != mmcfg_last_accessed_device ||
 	    cpu != mmcfg_last_accessed_cpu) {
@@ -50,7 +50,7 @@ static void pci_exp_set_dev_base(unsigned int base, int bus, int devfn)
 	}
 }
 
-int pci_mmcfg_read(unsigned int seg, unsigned int bus,
+int pci_ecam_read(unsigned int seg, unsigned int bus,
 			  unsigned int devfn, int reg, int len, u32 *value)
 {
 	unsigned long flags;
@@ -79,7 +79,7 @@ err:		*value = -1;
 	return 0;
 }
 
-int pci_mmcfg_write(unsigned int seg, unsigned int bus,
+int pci_ecam_write(unsigned int seg, unsigned int bus,
 			   unsigned int devfn, int reg, int len, u32 value)
 {
 	unsigned long flags;
@@ -106,22 +106,22 @@ int pci_mmcfg_write(unsigned int seg, unsigned int bus,
 	return 0;
 }
 
-int __init pci_mmcfg_arch_init(void)
+int __init pci_ecam_arch_init(void)
 {
 	printk(KERN_INFO "PCI: Using MMCONFIG for extended config space\n");
 	return 1;
 }
 
-void __init pci_mmcfg_arch_free(void)
+void __init pci_ecam_arch_free(void)
 {
 }
 
-int pci_mmcfg_arch_map(struct pci_mmcfg_region *cfg)
+int pci_ecam_arch_map(struct pci_ecam_region *cfg)
 {
 	return 0;
 }
 
-void pci_mmcfg_arch_unmap(struct pci_mmcfg_region *cfg)
+void pci_ecam_arch_unmap(struct pci_ecam_region *cfg)
 {
 	unsigned long flags;
 

@@ -5,10 +5,10 @@
 #include <linux/types.h>
 #include <linux/acpi.h>
 
-/* "PCI MMCONFIG %04x [bus %02x-%02x]" */
-#define PCI_MMCFG_RESOURCE_NAME_LEN (22 + 4 + 2 + 2)
+/* "PCI ECAM %04x [bus %02x-%02x]" */
+#define PCI_ECAM_RESOURCE_NAME_LEN (22 + 4 + 2 + 2)
 
-struct pci_mmcfg_region {
+struct pci_ecam_region {
 	struct list_head list;
 	struct resource res;
 	u64 address;
@@ -16,40 +16,40 @@ struct pci_mmcfg_region {
 	u16 segment;
 	u8 start_bus;
 	u8 end_bus;
-	char name[PCI_MMCFG_RESOURCE_NAME_LEN];
+	char name[PCI_ECAM_RESOURCE_NAME_LEN];
 };
 
-struct pci_mmcfg_mmio_ops {
+struct pci_ecam_mmio_ops {
 	u32 (*read)(int len, void __iomem *addr);
 	void (*write)(int len, void __iomem *addr, u32 value);
 };
 
-struct pci_mmcfg_region *pci_mmconfig_lookup(int segment, int bus);
-struct pci_mmcfg_region *pci_mmconfig_alloc(int segment, int start,
+struct pci_ecam_region *pci_ecam_lookup(int segment, int bus);
+struct pci_ecam_region *pci_ecam_alloc(int segment, int start,
 						   int end, u64 addr);
-int pci_mmconfig_inject(struct pci_mmcfg_region *cfg);
-struct pci_mmcfg_region *pci_mmconfig_add(int segment, int start,
+int pci_ecam_inject(struct pci_ecam_region *cfg);
+struct pci_ecam_region *pci_ecam_add(int segment, int start,
 						 int end, u64 addr);
-void list_add_sorted(struct pci_mmcfg_region *new);
-void free_all_mmcfg(void);
-int pci_mmconfig_delete(u16 seg, u8 start, u8 end);
+void pci_ecam_list_add_sorted(struct pci_ecam_region *new);
+void pci_ecam_free_all(void);
+int pci_ecam_delete(u16 seg, u8 start, u8 end);
 
 /* Arch specific calls */
-int pci_mmcfg_arch_init(void);
-void pci_mmcfg_arch_free(void);
-int pci_mmcfg_arch_map(struct pci_mmcfg_region *cfg);
-void pci_mmcfg_arch_unmap(struct pci_mmcfg_region *cfg);
+int pci_ecam_arch_init(void);
+void pci_ecam_arch_free(void);
+int pci_ecam_arch_map(struct pci_ecam_region *cfg);
+void pci_ecam_arch_unmap(struct pci_ecam_region *cfg);
 extern u32 pci_mmio_read(int len, void __iomem *addr);
 extern void pci_mmio_write(int len, void __iomem *addr, u32 value);
-extern void pci_mmconfig_register_mmio(struct pci_mmcfg_mmio_ops *ops);
+extern void pci_ecam_register_mmio(struct pci_ecam_mmio_ops *ops);
 
-extern struct list_head pci_mmcfg_list;
+extern struct list_head pci_ecam_list;
 
-#define PCI_MMCFG_BUS_OFFSET(bus)      ((bus) << 20)
+#define PCI_ECAM_BUS_OFFSET(bus)      ((bus) << 20)
 
-int pci_mmcfg_read(unsigned int seg, unsigned int bus,
+int pci_ecam_read(unsigned int seg, unsigned int bus,
 		   unsigned int devfn, int reg, int len, u32 *value);
-int pci_mmcfg_write(unsigned int seg, unsigned int bus,
+int pci_ecam_write(unsigned int seg, unsigned int bus,
 		    unsigned int devfn, int reg, int len, u32 value);
 
 #endif  /* __KERNEL__ */
