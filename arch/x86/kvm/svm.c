@@ -205,6 +205,10 @@ module_param(npt, int, S_IRUGO);
 static int nested = true;
 module_param(nested, int, S_IRUGO);
 
+/* enable / disable AVIC */
+static int avic = true;
+module_param(avic, int, S_IRUGO);
+
 static void svm_set_cr0(struct kvm_vcpu *vcpu, unsigned long cr0);
 static void svm_flush_tlb(struct kvm_vcpu *vcpu);
 static void svm_complete_interrupts(struct vcpu_svm *svm);
@@ -932,8 +936,18 @@ static __init int svm_hardware_setup(void)
 	if (npt_enabled) {
 		printk(KERN_INFO "kvm: Nested Paging enabled\n");
 		kvm_enable_tdp();
-	} else
+	} else {
 		kvm_disable_tdp();
+
+		/* AVIC requires nested paging */
+		avic = false;
+	}
+
+	if (!boot_cpu_has(X86_FEATURE_AVIC))
+		avic = false;
+
+	if (avic)
+		printk(KERN_INFO "kvm: AVIC enabled\n");
 
 	return 0;
 
