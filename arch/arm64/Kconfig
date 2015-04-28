@@ -284,6 +284,13 @@ config PCI_DOMAINS_GENERIC
 config PCI_SYSCALL
 	def_bool PCI
 
+config PCI_MMCONFIG
+	def_bool y
+	select PCI_ECAM
+	select HAVE_PCI_ECAM
+	select GENERIC_PCI_ECAM
+	depends on ACPI
+
 source "drivers/pci/Kconfig"
 source "drivers/pci/pcie/Kconfig"
 source "drivers/pci/hotplug/Kconfig"

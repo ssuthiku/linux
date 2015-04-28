@@ -25,6 +25,7 @@
 #include <linux/device.h>
 #include <linux/pm_runtime.h>
 #include <linux/pci_hotplug.h>
+#include <linux/acpi.h>
 #include <asm-generic/pci-bridge.h>
 #include <asm/setup.h>
 #include "pci.h"
@@ -4487,7 +4488,7 @@ int pci_get_new_domain_nr(void)
 void pci_bus_assign_domain_nr(struct pci_bus *bus, struct device *parent)
 {
 	static int use_dt_domains = -1;
-	int domain = of_get_pci_domain_nr(parent->of_node);
+	int domain;
 
 	/*
 	 * Check DT domain and use_dt_domains values.
@@ -4515,17 +4516,22 @@ void pci_bus_assign_domain_nr(struct pci_bus *bus, struct device *parent)
 	 * invalidating the domain value (domain = -1) and printing a
 	 * corresponding error.
 	 */
-	if (domain >= 0 && use_dt_domains) {
-		use_dt_domains = 1;
-	} else if (domain < 0 && use_dt_domains != 1) {
-		use_dt_domains = 0;
-		domain = pci_get_new_domain_nr();
+	if (acpi_disabled) {
+		domain = of_get_pci_domain_nr(parent->of_node);
+		if (domain >= 0 && use_dt_domains) {
+			use_dt_domains = 1;
+		} else if (domain < 0 && use_dt_domains != 1) {
+			use_dt_domains = 0;
+			domain = pci_get_new_domain_nr();
+		} else {
+			dev_err(parent, "Node %s has inconsistent \"linux,pci-domain\" property in DT\n",
+				parent->of_node->full_name);
+			domain = -1;
+		}
 	} else {
-		dev_err(parent, "Node %s has inconsistent \"linux,pci-domain\" property in DT\n",
-			parent->of_node->full_name);
-		domain = -1;
+		struct pci_controller *sd = bus->sysdata;
+		domain = sd->segment;
 	}
-
 	bus->domain_nr = domain;
 }
 #endif
