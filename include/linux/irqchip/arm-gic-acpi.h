@@ -19,6 +19,7 @@
  */
 #define ACPI_GICV2_DIST_MEM_SIZE	(SZ_4K)
 #define ACPI_GIC_CPU_IF_MEM_SIZE	(SZ_8K)
+#define ACPI_GICV3_DIST_MEM_SIZE	(SZ_64K)
 
 struct acpi_table_header;
 
