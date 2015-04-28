@@ -47,6 +47,9 @@ config ARM_VIC_NR
 	  The maximum number of VICs available in the system, for
 	  power management.
 
+config ARM_GIC_ACPI
+	bool
+
 config ATMEL_AIC_IRQ
 	bool
 	select GENERIC_IRQ_CHIP
