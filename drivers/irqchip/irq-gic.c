@@ -852,15 +852,22 @@ static struct notifier_block gic_cpu_notifier = {
 static int gic_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 				unsigned int nr_irqs, void *arg)
 {
-	int i, ret;
+	int i;
 	irq_hw_number_t hwirq;
-	unsigned int type = IRQ_TYPE_NONE;
-	struct of_phandle_args *irq_data = arg;
 
-	ret = gic_irq_domain_xlate(domain, irq_data->np, irq_data->args,
-				   irq_data->args_count, &hwirq, &type);
-	if (ret)
-		return ret;
+	if (acpi_disabled) {	/* DT case */
+		int ret;
+		unsigned int type = IRQ_TYPE_NONE;
+		struct of_phandle_args *irq_data = arg;
+
+		ret = gic_irq_domain_xlate(domain, irq_data->np,
+					irq_data->args,
+					irq_data->args_count, &hwirq, &type);
+		if (ret)
+			return ret;
+	} else {	/* ACPI case */
+		hwirq = (irq_hw_number_t)*(u32 *)arg;
+	}
 
 	for (i = 0; i < nr_irqs; i++)
 		gic_irq_domain_map(domain, virq + i, hwirq + i);
@@ -946,11 +953,11 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 		gic_irqs = 1020;
 	gic->gic_irqs = gic_irqs;
 
-	if (node) {		/* DT case */
+	if (node || !acpi_disabled) {	/* DT or ACPI case */
 		gic->domain = irq_domain_add_linear(node, gic_irqs,
 						    &gic_irq_domain_hierarchy_ops,
 						    gic);
-	} else {		/* Non-DT case */
+	} else {		/* Non-DT and Non-ACPI case */
 		/*
 		 * For primary GICs, skip over SGIs.
 		 * For secondary GICs, skip over PPIs, too.
@@ -1131,13 +1138,8 @@ gic_v2_acpi_init(struct acpi_table_header *table)
 		return -ENOMEM;
 	}
 
-	/*
-	 * Initialize zero GIC instance (no multi-GIC support). Also, set GIC
-	 * as default IRQ domain to allow for GSI registration and GSI to IRQ
-	 * number translation (see acpi_register_gsi() and acpi_gsi_to_irq()).
-	 */
 	gic_init_bases(0, -1, dist_base, cpu_base, 0, NULL);
-	irq_set_default_host(gic_data[0].domain);
+	set_acpi_irq_domain(gic_data[0].domain);
 
 	acpi_irq_model = ACPI_IRQ_MODEL_GIC;
 	return 0;

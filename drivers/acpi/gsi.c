@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2015 ARM Ltd.
  * Author: Lorenzo Pieralisi <lorenzo.pieralisi@arm.com>
+ *         Hanjun Guo <hanjun.guo@linaro.org> for stacked irqdomains support
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -13,6 +14,13 @@
 #include <linux/irqdomain.h>
 
 enum acpi_irq_model_id acpi_irq_model;
+
+static struct irq_domain *acpi_irq_domain __read_mostly;
+
+void set_acpi_irq_domain(struct irq_domain *domain)
+{
+	acpi_irq_domain = domain;
+}
 
 static unsigned int acpi_gsi_get_irq_type(int trigger, int polarity)
 {
@@ -45,12 +53,7 @@ static unsigned int acpi_gsi_get_irq_type(int trigger, int polarity)
  */
 int acpi_gsi_to_irq(u32 gsi, unsigned int *irq)
 {
-	/*
-	 * Only default domain is supported at present, always find
-	 * the mapping corresponding to default domain by passing NULL
-	 * as irq_domain parameter
-	 */
-	*irq = irq_find_mapping(NULL, gsi);
+	*irq = irq_find_mapping(acpi_irq_domain, gsi);
 	/*
 	 * *irq == 0 means no mapping, that should
 	 * be reported as a failure
@@ -72,16 +75,16 @@ EXPORT_SYMBOL_GPL(acpi_gsi_to_irq);
 int acpi_register_gsi(struct device *dev, u32 gsi, int trigger,
 		      int polarity)
 {
-	unsigned int irq;
+	int irq;
 	unsigned int irq_type = acpi_gsi_get_irq_type(trigger, polarity);
 
-	/*
-	 * There is no way at present to look-up the IRQ domain on ACPI,
-	 * hence always create mapping referring to the default domain
-	 * by passing NULL as irq_domain parameter
-	 */
-	irq = irq_create_mapping(NULL, gsi);
-	if (!irq)
+	irq = irq_find_mapping(acpi_irq_domain, gsi);
+	if (irq > 0)
+		return irq;
+
+	irq = irq_domain_alloc_irqs(acpi_irq_domain, 1, dev_to_node(dev),
+				    &gsi);
+	if (irq <= 0)
 		return -EINVAL;
 
 	/* Set irq type if specified and different than the current one */
@@ -98,7 +101,7 @@ EXPORT_SYMBOL_GPL(acpi_register_gsi);
  */
 void acpi_unregister_gsi(u32 gsi)
 {
-	int irq = irq_find_mapping(NULL, gsi);
+	int irq = irq_find_mapping(acpi_irq_domain, gsi);
 
 	irq_dispose_mapping(irq);
 }

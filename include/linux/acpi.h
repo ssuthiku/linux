@@ -232,6 +232,11 @@ extern int acpi_get_override_irq(u32 gsi, int *trigger, int *polarity);
  */
 void acpi_unregister_gsi (u32 gsi);
 
+#ifdef CONFIG_ACPI_GENERIC_GSI
+struct irq_domain;
+void set_acpi_irq_domain(struct irq_domain *domain);
+#endif
+
 struct pci_dev;
 
 int acpi_pci_irq_enable (struct pci_dev *dev);
