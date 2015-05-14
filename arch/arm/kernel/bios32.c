@@ -604,15 +604,25 @@ resource_size_t pcibios_align_resource(void *data, const struct resource *res,
 }
 
 /**
- * pcibios_enable_device - Enable I/O and memory.
- * @dev: PCI device to be enabled
+ * pcibios_add_device - Initialize device before adding it to PCI bus
+ * @dev: PCI device to be added
  */
-int pcibios_enable_device(struct pci_dev *dev, int mask)
+int pcibios_add_device(struct pci_dev *dev)
 {
-	if (pci_has_flag(PCI_PROBE_ONLY))
-		return 0;
+	struct resource *res;
+	int i;
+	/*
+	 * Device resources are claimed to validate
+	 * them and initialize their hierarchy structure
+	 */
+	for (i = 0; i < PCI_NUM_RESOURCES; i++) {
+		res = &dev->resource[i];
+		if (res->parent || !res->flags)
+			continue;
+		pci_claim_resource(dev, i);
+	}
 
-	return pci_enable_resources(dev, mask);
+	return 0;
 }
 
 int pci_mmap_page_range(struct pci_dev *dev, struct vm_area_struct *vma,
