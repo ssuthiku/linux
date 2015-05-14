@@ -46,8 +46,19 @@ resource_size_t pcibios_align_resource(void *data, const struct resource *res,
  */
 int pcibios_add_device(struct pci_dev *dev)
 {
-	if (acpi_disabled)
+	struct resource *res;
+	int i;
+
+	if (acpi_disabled) {
 		dev->irq = of_irq_parse_and_map_pci(dev, 0, 0);
+
+		for (i = 0; i < PCI_NUM_RESOURCES; i++) {
+			res = &dev->resource[i];
+			if (res->parent || !res->flags)
+				continue;
+			pci_claim_resource(dev, i);
+		}
+	}
 
 	return 0;
 }
