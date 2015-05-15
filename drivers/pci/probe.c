@@ -6,12 +6,14 @@
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/pci.h>
-#include <linux/of_pci.h>
+#include <linux/of_device.h>
 #include <linux/pci_hotplug.h>
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/cpumask.h>
 #include <linux/pci-aspm.h>
+#include <linux/acpi.h>
+#include <linux/property.h>
 #include <asm-generic/pci-bridge.h>
 #include "pci.h"
 
@@ -1544,6 +1546,35 @@ static void pci_init_capabilities(struct pci_dev *dev)
 	pci_enable_acs(dev);
 }
 
+/**
+ * pci_dma_configure - Setup DMA configuration
+ * @pci_dev: ptr to pci_dev struct of the PCI device
+ *
+ * Function to update PCI devices's DMA configuration using the same
+ * info from the OF node or ACPI node of host bridge's parent (if any).
+ */
+static void pci_dma_configure(struct pci_dev *pci_dev)
+{
+	struct device *dev = &pci_dev->dev;
+	struct device *bridge = pci_get_host_bridge_device(pci_dev);
+	struct device *host = bridge->parent;
+	struct acpi_device *adev;
+	bool coherent;
+
+	if (!host)
+		return;
+
+	if (acpi_disabled) {
+		of_dma_configure(dev, host->of_node);
+	} else if (has_acpi_companion(host)) {
+		adev = to_acpi_node(host->fwnode);
+		if (acpi_check_dma(adev, &coherent))
+			arch_setup_dma_ops(dev, 0, 0, NULL, coherent);
+	}
+
+	pci_put_host_bridge_device(bridge);
+}
+
 void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 {
 	int ret;
@@ -1557,7 +1588,7 @@ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 	dev->dev.dma_mask = &dev->dma_mask;
 	dev->dev.dma_parms = &dev->dma_parms;
 	dev->dev.coherent_dma_mask = 0xffffffffull;
-	of_pci_dma_configure(dev);
+	pci_dma_configure(dev);
 
 	pci_set_dma_max_seg_size(dev, 65536);
 	pci_set_dma_seg_boundary(dev, 0xffffffff);
