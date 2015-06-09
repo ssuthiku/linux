@@ -334,6 +334,21 @@ static void pci_read_bases(struct pci_dev *dev, unsigned int howmany, int rom)
 	}
 }
 
+static void pci_claim_bridge_resources(struct pci_bus *bus)
+{
+	struct pci_dev *dev = bus->self;
+	int idx;
+
+	for (idx = PCI_BRIDGE_RESOURCES; idx < PCI_NUM_RESOURCES; idx++) {
+		struct resource *r = &dev->resource[idx];
+
+		if (!r->flags || r->parent)
+			continue;
+
+		pci_claim_bridge_resource(dev, idx);
+	}
+}
+
 static void pci_read_bridge_io(struct pci_bus *child)
 {
 	struct pci_dev *dev = child->self;
@@ -481,6 +496,8 @@ void pci_read_bridge_bases(struct pci_bus *child)
 			}
 		}
 	}
+
+	pci_claim_bridge_resources(child);
 }
 
 static struct pci_bus *pci_alloc_bus(struct pci_bus *parent)
@@ -828,6 +845,11 @@ int pci_scan_bridge(struct pci_bus *bus, struct pci_dev *dev, int max, int pass)
 			child->bridge_ctl = bctl;
 		}
 
+		/*
+		 * Read and initialize bridge resources.
+		 */
+		pci_read_bridge_bases(child);
+
 		cmax = pci_scan_child_bus(child);
 		if (cmax > subordinate)
 			dev_warn(&dev->dev, "bridge has subordinate %02x but max busn %02x\n",
@@ -888,6 +910,10 @@ int pci_scan_bridge(struct pci_bus *bus, struct pci_dev *dev, int max, int pass)
 
 		if (!is_cardbus) {
 			child->bridge_ctl = bctl;
+			/*
+			 * Read and initialize bridge resources.
+			 */
+			pci_read_bridge_bases(child);
 			max = pci_scan_child_bus(child);
 		} else {
 			/*
