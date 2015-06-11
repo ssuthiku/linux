@@ -177,6 +177,18 @@ void sync_global_pgds(unsigned long start, unsigned long end)
 			continue;
 
 		rcu_read_lock(); /* Task list walk */
+
+		/*
+		 * Since this is x86, this spin_lock() is also a full memory barrier that
+		 * is required for correct operation of the lockless reading of PGDs
+		 * in arch_pgd_init_late(). If you ever move this code to another
+		 * architecture or to generic code you need to make sure this is
+		 * an:
+		 *
+		 *	smp_mb();
+		 *
+		 * before looking at PGDs in the loop below.
+		 */
 		spin_lock(&pgd_lock);
 
 		for_each_process(g) {
