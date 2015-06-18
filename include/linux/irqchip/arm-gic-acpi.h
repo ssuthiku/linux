@@ -21,12 +21,5 @@
 #define ACPI_GIC_CPU_IF_MEM_SIZE	(SZ_8K)
 #define ACPI_GICV3_DIST_MEM_SIZE	(SZ_64K)
 
-struct acpi_table_header;
-
-int gic_v2_acpi_init(struct acpi_table_header *table);
-void acpi_gic_init(void);
-#else
-static inline void acpi_gic_init(void) { }
-#endif
-
+#endif /* CONFIG_ACPI */
 #endif /* ARM_GIC_ACPI_H_ */

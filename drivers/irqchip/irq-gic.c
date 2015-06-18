@@ -1109,7 +1109,7 @@ static int gic_acpi_gsi_desc_populate(struct acpi_gsi_descriptor *data,
 	return 0;
 }
 
-int __init
+static int __init
 gic_v2_acpi_init(struct acpi_table_header *table)
 {
 	void __iomem *cpu_base, *dist_base;
@@ -1163,4 +1163,5 @@ gic_v2_acpi_init(struct acpi_table_header *table)
 			   gic_acpi_gsi_desc_populate);
 	return 0;
 }
+IRQCHIP_ACPI_DECLARE(gic_v2, ACPI_MADT_GIC_VERSION_V2, gic_v2_acpi_init);
 #endif
