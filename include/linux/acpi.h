@@ -127,6 +127,16 @@ static inline void acpi_initrd_override(void *data, size_t size)
 		(!entry) || (unsigned long)entry + sizeof(*entry) > end ||  \
 		((struct acpi_subtable_header *)entry)->length < sizeof(*entry))
 
+#define ACPI_MADT_GICC_51_LENGTH	76
+#define ACPI_MADT_GICC_60_LENGTH	80
+
+#define BAD_MADT_GICC_ENTRY(entry, end) (				    \
+		(!entry) || (unsigned long)entry + sizeof(*entry) > end ||  \
+		((ACPI_FADT_SPEC_VERSION == ACPI_SPEC_VERSION(5, 1)) &&	    \
+		 (entry->header.length != ACPI_MADT_GICC_51_LENGTH))	||  \
+		((ACPI_FADT_SPEC_VERSION == ACPI_SPEC_VERSION(6, 0)) &&	    \
+		 (entry->header.length != ACPI_MADT_GICC_60_LENGTH)))
+
 char * __acpi_map_table (unsigned long phys_addr, unsigned long size);
 void __acpi_unmap_table(char *map, unsigned long size);
 int early_acpi_boot_init(void);
