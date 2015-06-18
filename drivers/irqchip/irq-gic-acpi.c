@@ -119,7 +119,7 @@ irqchip_acpi_match_end __used __section(__irqchip_acpi_table_end);
 
 extern struct acpi_table_id __irqchip_acpi_table[];
 
-void __init acpi_irqchip_init(void)
+void __init acpi_irq_init(void)
 {
 	struct acpi_table_id *id;
 
