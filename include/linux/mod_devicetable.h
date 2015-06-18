@@ -193,6 +193,14 @@ struct acpi_device_id {
 	__u32 cls_msk;
 };
 
+#define ACPI_TABLE_ID_LEN	5
+
+struct acpi_table_id {
+	__u8 id[ACPI_TABLE_ID_LEN];
+	const void *handler;
+	kernel_ulong_t driver_data;
+};
+
 #define PNP_ID_LEN	8
 #define PNP_MAX_DEVICES	8
 

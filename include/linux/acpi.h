@@ -840,4 +840,20 @@ static inline struct acpi_device *acpi_get_next_child(struct device *dev,
 
 #endif
 
+#ifdef CONFIG_ACPI
+#define ACPI_DECLARE(table, name, table_id, data, fn)			\
+	static const struct acpi_table_id __acpi_table_##name		\
+		__used __section(__##table##_acpi_table)		\
+		 = { .id = table_id,					\
+		     .handler = (void *)fn,				\
+		     .driver_data = data }
+#else
+#define ACPI_DECLARE(table, name, table_id, data, fn)			\
+	static const struct acpi_table_id __acpi_table_##name		\
+		__attribute__((unused))					\
+		 = { .id = table_id,					\
+		     .handler = (void *)fn,				\
+		     .driver_data = data }
+#endif
+
 #endif	/*_LINUX_ACPI_H*/

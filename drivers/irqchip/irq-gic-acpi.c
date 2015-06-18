@@ -110,3 +110,32 @@ static int __init acpi_gic_version_init(void)
 
 	return 0;
 }
+
+/*
+ * This special acpi_table_id is the sentinel at the end of the
+ * acpi_table_id[] array of all irqchips. It is automatically placed at
+ * the end of the array by the linker, thanks to being part of a
+ * special section.
+ */
+static const struct acpi_table_id
+irqchip_acpi_match_end __used __section(__irqchip_acpi_table_end);
+
+extern struct acpi_table_id __irqchip_acpi_table[];
+
+void __init acpi_irqchip_init(void)
+{
+	struct acpi_table_id *id;
+
+	if (acpi_disabled)
+		return;
+
+	if (acpi_gic_version_init())
+		return;
+
+	/* scan the irqchip table to match the GIC version and its driver */
+	for (id = __irqchip_acpi_table; id->id[0]; id++) {
+		if (gic_version == (u8)id->driver_data)
+			acpi_table_parse(id->id,
+					 (acpi_tbl_table_handler)id->handler);
+	}
+}
