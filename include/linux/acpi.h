@@ -48,6 +48,11 @@
 #include <acpi/acpi_io.h>
 #include <asm/acpi.h>
 
+#define ACPI_SPEC_VERSION(major, minor)	((major<<8)|minor)
+#define ACPI_FADT_SPEC_VERSION	\
+	ACPI_SPEC_VERSION(acpi_gbl_FADT.header.revision, \
+			  acpi_gbl_FADT.minor_revision)
+
 static inline acpi_handle acpi_device_handle(struct acpi_device *adev)
 {
 	return adev ? adev->handle : NULL;
