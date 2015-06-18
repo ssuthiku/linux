@@ -3,7 +3,9 @@
 
 #include <linux/irq.h>
 
-#ifndef acpi_irq_init
+#ifdef CONFIG_ACPI
+void acpi_irq_init(void);
+#else
 static inline void acpi_irq_init(void) { }
 #endif
 

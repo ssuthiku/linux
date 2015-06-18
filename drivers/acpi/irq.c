@@ -93,7 +93,7 @@ acpi_match_madt_subtable(struct acpi_subtable_header *header,
 	return 0;
 }
 
-void __init acpi_irqchip_init(void)
+void __init acpi_irq_init(void)
 {
 
 	if (acpi_disabled)
