@@ -24,6 +24,7 @@
 struct acpi_gsi_descriptor;
 int gic_acpi_gsi_desc_populate(struct acpi_gsi_descriptor *data,
                                u32 gsi, unsigned int irq_type);
+u8 acpi_gic_version(void);
 
 #endif /* CONFIG_ACPI */
 #endif /* ARM_GIC_ACPI_H_ */
