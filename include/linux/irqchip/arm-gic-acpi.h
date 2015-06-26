@@ -21,5 +21,7 @@
 #define ACPI_GIC_CPU_IF_MEM_SIZE	(SZ_8K)
 #define ACPI_GICV3_DIST_MEM_SIZE	(SZ_64K)
 
+u8 acpi_gic_version(void);
+
 #endif /* CONFIG_ACPI */
 #endif /* ARM_GIC_ACPI_H_ */

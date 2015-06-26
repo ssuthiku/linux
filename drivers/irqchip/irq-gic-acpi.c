@@ -21,6 +21,11 @@ static u8 gic_version __initdata = ACPI_MADT_GIC_VERSION_NONE;
 
 static phys_addr_t dist_phy_base __initdata;
 
+u8 __init acpi_gic_version(void)
+{
+	return gic_version;
+}
+
 static int __init
 acpi_gic_parse_distributor(struct acpi_subtable_header *header,
 				const unsigned long end)
@@ -34,6 +39,27 @@ acpi_gic_parse_distributor(struct acpi_subtable_header *header,
 
 	gic_version = dist->version;
 	dist_phy_base = dist->base_address;
+	return 0;
+}
+
+static int __init
+gic_acpi_parse_madt_gicc(struct acpi_subtable_header *header,
+			 const unsigned long end)
+{
+	struct acpi_madt_generic_interrupt *gicc;
+
+	gicc = (struct acpi_madt_generic_interrupt *)header;
+
+	if (BAD_MADT_ENTRY(gicc, end))
+		return -EINVAL;
+
+	/*
+	 *If GICC is enabled but no gicr base address, which means GICR is
+	 * not presented via GICC
+	 */
+	if ((gicc->flags & ACPI_MADT_ENABLED) && !gicc->gicr_base_address)
+		return -ENODEV;
+
 	return 0;
 }
 
@@ -54,8 +80,12 @@ static bool __init acpi_gic_redist_is_present(void)
 	/* has at least one GIC redistributor entry */
 	if (count > 0)
 		return true;
-	else
-		return false;
+
+	/* else try to find GICR base in GICC entries */
+	count = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_INTERRUPT,
+				      gic_acpi_parse_madt_gicc, 0);
+
+	return count > 0;
 }
 
 static int __init acpi_gic_version_init(void)
