@@ -14,7 +14,16 @@
 
 enum acpi_irq_model_id acpi_irq_model;
 
-static unsigned int acpi_gsi_get_irq_type(int trigger, int polarity)
+struct irq_domain *acpi_irq_domain = NULL;
+
+int acpi_gsi_set_domain(struct irq_domain *domain)
+{
+	acpi_irq_domain = domain;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(acpi_gsi_set_domain);
+
+unsigned int acpi_gsi_get_irq_type(int trigger, int polarity)
 {
 	switch (polarity) {
 	case ACPI_ACTIVE_LOW:
@@ -32,6 +41,8 @@ static unsigned int acpi_gsi_get_irq_type(int trigger, int polarity)
 		return IRQ_TYPE_NONE;
 	}
 }
+EXPORT_SYMBOL_GPL(acpi_gsi_get_irq_type);
+
 
 /**
  * acpi_gsi_to_irq() - Retrieve the linux irq number for a given GSI
@@ -50,7 +61,7 @@ int acpi_gsi_to_irq(u32 gsi, unsigned int *irq)
 	 * the mapping corresponding to default domain by passing NULL
 	 * as irq_domain parameter
 	 */
-	*irq = irq_find_mapping(NULL, gsi);
+	*irq = irq_find_mapping(acpi_irq_domain, gsi);
 	/*
 	 * *irq == 0 means no mapping, that should
 	 * be reported as a failure
@@ -80,7 +91,7 @@ int acpi_register_gsi(struct device *dev, u32 gsi, int trigger,
 	 * hence always create mapping referring to the default domain
 	 * by passing NULL as irq_domain parameter
 	 */
-	irq = irq_create_mapping(NULL, gsi);
+	irq = irq_create_mapping(acpi_irq_domain, gsi);
 	if (!irq)
 		return -EINVAL;
 
@@ -98,7 +109,7 @@ EXPORT_SYMBOL_GPL(acpi_register_gsi);
  */
 void acpi_unregister_gsi(u32 gsi)
 {
-	int irq = irq_find_mapping(NULL, gsi);
+	int irq = irq_find_mapping(acpi_irq_domain, gsi);
 
 	irq_dispose_mapping(irq);
 }
