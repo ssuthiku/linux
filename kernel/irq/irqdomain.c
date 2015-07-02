@@ -187,10 +187,11 @@ struct irq_domain *irq_domain_add_legacy(struct device_node *of_node,
 EXPORT_SYMBOL_GPL(irq_domain_add_legacy);
 
 /**
- * irq_find_host() - Locates a domain for a given device node
- * @node: device-tree node of the interrupt controller
+ * irq_find_domain() - Locates a domain for a given a refence pointer
+ * @type: specify irq domain reference pointer type to be match
+ * @ref: pointer to the reference data structure to be matched
  */
-struct irq_domain *irq_find_host(struct device_node *node)
+struct irq_domain *irq_find_domain(enum irq_domain_ref_type type, void *ref)
 {
 	struct irq_domain *h, *found = NULL;
 	int rc;
@@ -202,10 +203,16 @@ struct irq_domain *irq_find_host(struct device_node *node)
 	 */
 	mutex_lock(&irq_domain_mutex);
 	list_for_each_entry(h, &irq_domain_list, link) {
-		if (h->ops->match)
-			rc = h->ops->match(h, node);
-		else
-			rc = (h->of_node != NULL) && (h->of_node == node);
+		if (h->ops->match) {
+			rc = h->ops->match(h, type, ref);
+		} else if (type == IRQ_DOMAIN_REF_OF_DEV_NODE ||
+			   type == IRQ_DOMAIN_REF_ACPI_MSI_FRAME) {
+			/* Here, we just need to compare reference pointer */
+			rc = (h->of_node != NULL) && (h->of_node == ref);
+		} else {
+			/* For non-DT and non-ACPI reference, must specify match */
+			BUG();
+		}
 
 		if (rc) {
 			found = h;
@@ -214,6 +221,16 @@ struct irq_domain *irq_find_host(struct device_node *node)
 	}
 	mutex_unlock(&irq_domain_mutex);
 	return found;
+}
+EXPORT_SYMBOL_GPL(irq_find_domain);
+
+/**
+ * irq_find_host() - Locates a domain for a given device node
+ * @node: device-tree node of the interrupt controller
+ */
+struct irq_domain *irq_find_host(struct device_node *node)
+{
+	return irq_find_domain(IRQ_DOMAIN_REF_OF_DEV_NODE, node);
 }
 EXPORT_SYMBOL_GPL(irq_find_host);
 

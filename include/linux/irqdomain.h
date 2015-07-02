@@ -45,6 +45,11 @@ struct irq_data;
 /* Number of irqs reserved for a legacy isa controller */
 #define NUM_ISA_INTERRUPTS	16
 
+enum irq_domain_ref_type {
+	IRQ_DOMAIN_REF_OF_DEV_NODE = 0,
+	IRQ_DOMAIN_REF_ACPI_MSI_FRAME,
+};
+
 /**
  * struct irq_domain_ops - Methods for irq_domain objects
  * @match: Match an interrupt controller device node to a host, returns
@@ -61,7 +66,7 @@ struct irq_data;
  * to setup the irq_desc when returning from map().
  */
 struct irq_domain_ops {
-	int (*match)(struct irq_domain *d, struct device_node *node);
+	int (*match)(struct irq_domain *d, enum irq_domain_ref_type type, void *data);
 	int (*map)(struct irq_domain *d, unsigned int virq, irq_hw_number_t hw);
 	void (*unmap)(struct irq_domain *d, unsigned int virq);
 	int (*xlate)(struct irq_domain *d, struct device_node *node,
@@ -117,7 +122,11 @@ struct irq_domain {
 	unsigned int flags;
 
 	/* Optional data */
-	struct device_node *of_node;
+	enum irq_domain_ref_type type;
+	union {
+		struct device_node *of_node;
+		void *acpi_ref;
+	};
 	struct irq_domain_chip_generic *gc;
 #ifdef	CONFIG_IRQ_DOMAIN_HIERARCHY
 	struct irq_domain *parent;
@@ -165,6 +174,8 @@ struct irq_domain *irq_domain_add_legacy(struct device_node *of_node,
 					 void *host_data);
 extern struct irq_domain *irq_find_host(struct device_node *node);
 extern void irq_set_default_host(struct irq_domain *host);
+extern struct irq_domain *irq_find_domain(enum irq_domain_ref_type type,
+					  void *ref);
 
 /**
  * irq_domain_add_linear() - Allocate and register a linear revmap irq_domain.
