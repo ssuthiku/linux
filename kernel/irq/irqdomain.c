@@ -478,6 +478,7 @@ unsigned int irq_create_of_mapping(struct of_phandle_args *irq_data)
 	irq_hw_number_t hwirq;
 	unsigned int type = IRQ_TYPE_NONE;
 	int virq;
+	void *info;
 
 	domain = irq_data->np ? irq_find_host(irq_data->np) : irq_default_domain;
 	if (!domain) {
@@ -504,7 +505,14 @@ unsigned int irq_create_of_mapping(struct of_phandle_args *irq_data)
 		if (virq)
 			return virq;
 
-		virq = irq_domain_alloc_irqs(domain, 1, NUMA_NO_NODE, irq_data);
+		if (domain->ops->init_alloc_info)
+			if (domain->ops->init_alloc_info(irq_data->args,
+							 irq_data->args_count,
+							 irq_data->np,
+							 &info))
+				return 0;
+
+		virq = irq_domain_alloc_irqs(domain, 1, NUMA_NO_NODE, info);
 		if (virq <= 0)
 			return 0;
 	} else {
