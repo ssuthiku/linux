@@ -89,11 +89,22 @@
 #define GICH_MISR_EOI			(1 << 0)
 #define GICH_MISR_U			(1 << 1)
 
+#define GIC_INT_TYPE_SPI		0
+#define GIC_INT_TYPE_PPI		1
+#define GIC_INT_TYPE_GSI		~0U
+
 #ifndef __ASSEMBLY__
 
 #include <linux/irqdomain.h>
 
 struct device_node;
+
+struct gic_irq_alloc_info {
+	void *ref;
+	unsigned int irq_type;
+	unsigned int gic_int_type;
+	unsigned int hwirq;
+};
 
 void gic_set_irqchip_flags(unsigned long flags);
 void gic_init_bases(unsigned int, int, void __iomem *, void __iomem *,

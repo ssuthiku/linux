@@ -852,22 +852,18 @@ static struct notifier_block gic_cpu_notifier = {
 static int gic_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 				unsigned int nr_irqs, void *arg)
 {
-	int i;
+	int i, ret;
 	irq_hw_number_t hwirq;
+	unsigned int type = IRQ_TYPE_NONE;
+	struct gic_irq_alloc_info *info = arg;
+	u32 intspec[3];
 
-	if (acpi_disabled) {	/* DT case */
-		int ret;
-		unsigned int type = IRQ_TYPE_NONE;
-		struct of_phandle_args *irq_data = arg;
-
-		ret = gic_irq_domain_xlate(domain, irq_data->np,
-					irq_data->args,
-					irq_data->args_count, &hwirq, &type);
-		if (ret)
-			return ret;
-	} else {	/* ACPI case */
-		hwirq = (irq_hw_number_t)*(u32 *)arg;
-	}
+	intspec[0] = info->gic_int_type;
+	intspec[1] = info->hwirq;
+	intspec[2] = info->irq_type;
+	ret = gic_irq_domain_xlate(domain, info->ref, intspec, 3, &hwirq, &type);
+	if (ret)
+		return ret;
 
 	for (i = 0; i < nr_irqs; i++)
 		gic_irq_domain_map(domain, virq + i, hwirq + i);
@@ -875,10 +871,68 @@ static int gic_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 	return 0;
 }
 
+static int gic_init_irq_alloc_info(uint32_t *data, int nr, void *ref,
+				   void **info)
+{
+	struct gic_irq_alloc_info *alloc_info;
+	unsigned int gic_int_type;
+	unsigned int hwirq;
+	unsigned int irq_type;
+
+	if (nr != 3)
+		return -EINVAL;
+
+	gic_int_type = data[0];
+	hwirq = data[1];
+	irq_type = data[2];
+
+	alloc_info = kzalloc(sizeof(struct gic_irq_alloc_info), GFP_KERNEL);
+	if (!alloc_info)
+		return -ENOMEM;
+
+	if ((irq_type & IRQ_TYPE_SENSE_MASK) != IRQ_TYPE_LEVEL_HIGH &&
+	    (irq_type & IRQ_TYPE_SENSE_MASK) != IRQ_TYPE_EDGE_RISING)
+		return -EINVAL;
+
+	alloc_info->irq_type = irq_type;
+	alloc_info->ref = ref;
+
+	/*
+	 * ACPI have no bindings to indicate SPI or PPI, so we
+	 * use different mappings from DT in ACPI.
+	 *
+	 * For FDT
+	 * PPI interrupt: in the range [0, 15];
+	 * SPI interrupt: in the range [0, 987];
+	 *
+	 * For ACPI, GSI should be unique so using
+	 * the hwirq directly for the mapping:
+	 * PPI interrupt: in the range [16, 31];
+	 * SPI interrupt: in the range [32, 1019];
+	 */
+
+	if (gic_int_type != GIC_INT_TYPE_GSI) {
+		alloc_info->gic_int_type = gic_int_type;
+		alloc_info->hwirq = hwirq;
+	} else {
+		if (hwirq < 32) {
+			alloc_info->gic_int_type = GIC_INT_TYPE_PPI;
+			alloc_info->hwirq = hwirq - 16;
+		} else {
+			alloc_info->gic_int_type = GIC_INT_TYPE_SPI;
+			alloc_info->hwirq = hwirq - 32;
+		}
+	}
+
+	*info = alloc_info;
+	return 0;
+}
+
 static const struct irq_domain_ops gic_irq_domain_hierarchy_ops = {
 	.xlate = gic_irq_domain_xlate,
 	.alloc = gic_irq_domain_alloc,
 	.free = irq_domain_free_irqs_top,
+	.init_alloc_info = gic_init_irq_alloc_info,
 };
 
 static const struct irq_domain_ops gic_irq_domain_ops = {
