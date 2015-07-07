@@ -1578,6 +1578,7 @@ static void pci_dma_configure(struct pci_dev *pci_dev)
 void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 {
 	int ret;
+	struct device *hdev;
 
 	pci_configure_device(dev);
 
@@ -1620,6 +1621,10 @@ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 	dev->match_driver = false;
 	ret = device_add(&dev->dev);
 	WARN_ON(ret < 0);
+
+	hdev = pci_get_host_bridge_device(dev);
+	arch_setup_dma_ops(&dev->dev, 0, 0, NULL,
+			   device_dma_is_coherent(hdev));
 }
 
 struct pci_dev *pci_scan_single_device(struct pci_bus *bus, int devfn)

@@ -67,6 +67,7 @@ config ARM64
 	select HAVE_HW_BREAKPOINT if PERF_EVENTS
 	select HAVE_MEMBLOCK
 	select HAVE_PATA_PLATFORM
+	select HAVE_PCI_ECAM
 	select HAVE_PERF_EVENTS
 	select HAVE_PERF_REGS
 	select HAVE_PERF_USER_STACK_DUMP
@@ -282,6 +283,12 @@ config PCI_DOMAINS_GENERIC
 
 config PCI_SYSCALL
 	def_bool PCI
+
+config PCI_MMCONFIG
+	bool "Support mmconfig PCI config space access"
+	select PCI_ECAM
+	select GENERIC_PCI_ECAM
+	depends on PCI && ACPI
 
 source "drivers/pci/Kconfig"
 source "drivers/pci/pcie/Kconfig"
