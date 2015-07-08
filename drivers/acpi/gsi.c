@@ -80,8 +80,8 @@ EXPORT_SYMBOL_GPL(acpi_gsi_to_irq);
  * Returns: a valid linux IRQ number on success
  *          -EINVAL on failure
  */
-int acpi_register_gsi(struct device *dev, u32 gsi, int trigger,
-		      int polarity)
+int __weak acpi_register_gsi(struct device *dev, u32 gsi, int trigger,
+			     int polarity)
 {
 	unsigned int irq;
 	unsigned int irq_type = acpi_gsi_get_irq_type(trigger, polarity);

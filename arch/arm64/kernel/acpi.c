@@ -20,6 +20,7 @@
 #include <linux/cpumask.h>
 #include <linux/init.h>
 #include <linux/irq.h>
+#include <linux/irqchip/arm-gic.h>
 #include <linux/irqdomain.h>
 #include <linux/memblock.h>
 #include <linux/of_fdt.h>
@@ -229,4 +230,51 @@ void __init acpi_gic_init(void)
 		pr_err("Failed to initialize GIC IRQ controller");
 
 	early_acpi_os_unmap_memory((char *)table, tbl_size);
+}
+
+int acpi_register_gsi(struct device *dev, u32 gsi, int trigger,
+		      int polarity)
+{
+	unsigned int irq;
+	unsigned int irq_type = acpi_gsi_get_irq_type(trigger, polarity);
+	struct irq_data *d = NULL;
+
+	if (acpi_irq_domain && acpi_irq_domain->ops->init_alloc_info) {
+		void *info;
+		int err;
+		uint32_t data[3] = {GIC_INT_TYPE_NONE, gsi, irq_type};
+
+		err = acpi_irq_domain->ops->init_alloc_info(data, 3,
+							    NULL, &info);
+		if (err)
+			return err;
+
+		irq = irq_domain_alloc_irqs(acpi_irq_domain, 1,
+					    dev_to_node(dev), info);
+		if (irq < 0)
+			return -ENOSPC;
+
+		d = irq_domain_get_irq_data(acpi_irq_domain, irq);
+		if (!d)
+			return -EFAULT;
+	} else {
+		/*
+		 * There is no IRQ domain on ACPI,
+		 * hence always create mapping referring to the default domain
+		 * by passing NULL as irq_domain parameter
+		 */
+		irq = irq_create_mapping(NULL, gsi);
+		if (!irq)
+			return -EINVAL;
+	}
+
+	/* Set irq type if specified and different than the current one */
+	if (irq_type != IRQ_TYPE_NONE &&
+		irq_type != irq_get_trigger_type(irq)) {
+		if (d)
+			d->chip->irq_set_type(d, irq_type);
+		else
+			irq_set_irq_type(irq, irq_type);
+	}
+	return irq;
 }
