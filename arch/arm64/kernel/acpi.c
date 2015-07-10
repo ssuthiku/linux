@@ -20,6 +20,7 @@
 #include <linux/cpumask.h>
 #include <linux/init.h>
 #include <linux/irq.h>
+#include <linux/irqchip/arm-gic.h>
 #include <linux/irqdomain.h>
 #include <linux/memblock.h>
 #include <linux/of_fdt.h>
@@ -204,4 +205,16 @@ void __init acpi_boot_table_init(void)
 		if (!param_acpi_force)
 			disable_acpi();
 	}
+}
+
+int acpi_init_irq_alloc_info(struct irq_domain *domain, u32 gsi, unsigned int irq_type,
+			 void **info)
+{
+	int ret;
+	uint32_t data[3] = {GIC_INT_TYPE_GSI, gsi, irq_type};
+
+	if (domain && domain->ops->init_alloc_info)
+		ret = domain->ops->init_alloc_info(data,3,NULL, info);
+
+	return 0;
 }
