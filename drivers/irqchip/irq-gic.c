@@ -1086,7 +1086,7 @@ gic_acpi_parse_madt_distributor(struct acpi_subtable_header *header,
 	return 0;
 }
 
-int __init
+static int __init
 gic_v2_acpi_init(struct acpi_table_header *table)
 {
 	void __iomem *cpu_base, *dist_base;
@@ -1142,4 +1142,5 @@ gic_v2_acpi_init(struct acpi_table_header *table)
 	acpi_irq_model = ACPI_IRQ_MODEL_GIC;
 	return 0;
 }
+IRQCHIP_ACPI_DECLARE(gic_v2, ACPI_MADT_GIC_VERSION_V2, gic_v2_acpi_init);
 #endif
