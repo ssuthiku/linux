@@ -136,6 +136,7 @@ struct pci_ops pci_root_ops = {
 
 struct pci_root_info {
 	struct acpi_pci_root_info common;
+	struct pci_controller controller;
 #ifdef  CONFIG_PCI_MMCONFIG
 	bool mcfg_added;
 	u8 start_bus;
@@ -146,28 +147,29 @@ struct pci_root_info {
 #ifdef CONFIG_PCI_MMCONFIG
 static int pci_add_mmconfig_region(struct acpi_pci_root_info *ci)
 {
-	struct pci_mmcfg_region *cfg;
+	struct pci_ecam_region *cfg;
 	struct pci_root_info *info;
 	struct acpi_pci_root *root = ci->root;
-	int err, seg = ci->controller.segment;
+	int err, seg;
 
 	info = container_of(ci, struct pci_root_info, common);
 	info->start_bus = (u8)root->secondary.start;
 	info->end_bus = (u8)root->secondary.end;
 	info->mcfg_added = false;
+	seg = info->controller.segment;
 
 	rcu_read_lock();
-	cfg = pci_mmconfig_lookup(seg, info->start_bus);
+	cfg = pci_ecam_lookup(seg, info->start_bus);
 	rcu_read_unlock();
 	if (cfg)
 		return 0;
 
-	cfg = pci_mmconfig_alloc(seg, info->start_bus, info->end_bus,
+	cfg = pci_ecam_alloc(seg, info->start_bus, info->end_bus,
 				 root->mcfg_addr);
 	if (!cfg)
 		return -ENOMEM;
 
-	err = pci_mmconfig_inject(cfg);
+	err = pci_ecam_inject(cfg);
 	if (!err)
 		info->mcfg_added = true;
 
@@ -180,7 +182,7 @@ static void pci_remove_mmconfig_region(struct acpi_pci_root_info *ci)
 
 	info = container_of(ci, struct pci_root_info, common);
 	if (info->mcfg_added) {
-		pci_mmconfig_delete(ci->controller.segment, info->start_bus,
+		pci_ecam_delete(info->controller.segment, info->start_bus,
 				    info->end_bus);
 		info->mcfg_added = false;
 	}
@@ -279,7 +281,11 @@ struct pci_bus *pci_acpi_scan_root(struct acpi_pci_root *root)
 		return NULL;
 	}
 
-	bus = acpi_pci_root_create(root, &acpi_pci_root_ops, &info->common);
+	info->controller.segment = domain;
+	info->controller.node = node;
+	info->controller.companion = root->device;
+	bus = acpi_pci_root_create(root, &acpi_pci_root_ops, &info->common,
+					&info->controller, domain, node);
 
 	/* After the PCI-E bus has been walked and all devices discovered,
 	 * configure any settings of the fabric that might be necessary.
