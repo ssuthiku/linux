@@ -9,6 +9,7 @@
 
 #include <linux/delay.h>
 #include <linux/init.h>
+#include <linux/irqdomain.h>
 #include <linux/pci.h>
 #include <linux/pci_hotplug.h>
 #include <linux/module.h>
@@ -16,6 +17,7 @@
 #include <linux/pci-acpi.h>
 #include <linux/pm_runtime.h>
 #include <linux/pm_qos.h>
+#include <acpi/acpi_gic.h>
 #include "pci.h"
 
 /*
@@ -680,6 +682,22 @@ static bool pci_acpi_bus_match(struct device *dev)
 {
 	return dev_is_pci(dev);
 }
+
+#ifdef CONFIG_GENERIC_MSI_IRQ_DOMAIN
+struct irq_domain *pci_host_bridge_acpi_msi_domain(struct pci_bus *bus)
+{
+	struct irq_domain *d = NULL;
+	void *token = acpi_gic_get_msi_token(&bus->dev);
+
+	if (token)
+		d = irq_find_matching_host(token, DOMAIN_BUS_PCI_MSI);
+
+	if (!d)
+		pr_debug("Fail to find domain for MSI\n");
+
+	return d;
+}
+#endif /*CONFIG_GENERIC_MSI_IRQ_DOMAIN*/
 
 static struct acpi_bus_type acpi_pci_bus = {
 	.name = "PCI",
