@@ -12,6 +12,7 @@
 #include <linux/module.h>
 #include <linux/cpumask.h>
 #include <linux/pci-aspm.h>
+#include <linux/pci-acpi.h>
 #include <linux/acpi.h>
 #include <linux/property.h>
 #include <asm-generic/pci-bridge.h>
@@ -671,7 +672,10 @@ static struct irq_domain *pci_host_bridge_msi_domain(struct pci_bus *bus)
 	 * Any firmware interface that can resolve the msi_domain
 	 * should be called from here.
 	 */
-	d = pci_host_bridge_of_msi_domain(bus);
+	if (acpi_disabled)
+		d = pci_host_bridge_of_msi_domain(bus);
+	else
+		d = pci_host_bridge_acpi_msi_domain(bus);
 
 	return d;
 }
