@@ -9,6 +9,7 @@
 
 #include <linux/delay.h>
 #include <linux/init.h>
+#include <linux/irqdomain.h>
 #include <linux/pci.h>
 #include <linux/pci_hotplug.h>
 #include <linux/module.h>
@@ -17,6 +18,10 @@
 #include <linux/pm_runtime.h>
 #include <linux/pm_qos.h>
 #include "pci.h"
+
+#ifdef CONFIG_ARM_GIC_ACPI
+#include <linux/irqchip/arm-gic-acpi.h>
+#endif
 
 /*
  * The UUID is defined in the PCI Firmware Specification available here:
@@ -680,6 +685,36 @@ static bool pci_acpi_bus_match(struct device *dev)
 {
 	return dev_is_pci(dev);
 }
+
+#ifdef CONFIG_PCI_MSI
+void pci_set_phb_acpi_msi_domain(struct pci_bus *bus)
+{
+	int err;
+	struct irq_domain *d;
+	struct acpi_madt_generic_msi_frame *msi_frame;
+
+	/**
+	* Since ACPI 5.1 currently does not define
+	* a way to associate MSI frame ID to a device,
+	* we can only support single MSI frame (index 0)
+	* at the moment.
+	*/
+	err = acpi_get_msi_frame(0, &msi_frame);
+	if (err)
+		return;
+
+#ifdef CONFIG_GENERIC_MSI_IRQ_DOMAIN
+	d = irq_find_matching_host((struct device_node*)msi_frame,
+					DOMAIN_BUS_PCI_MSI);
+	if (!d) {
+		pr_debug("Fail to find domain for MSI\n");
+		return;
+	}
+
+	dev_set_msi_domain(&bus->dev, d);
+#endif /* CONFIG_GENERIC_MSI_IRQ_DOMAIN */
+}
+#endif /* CONFIG_PCI_MSI */
 
 static struct acpi_bus_type acpi_pci_bus = {
 	.name = "PCI",
