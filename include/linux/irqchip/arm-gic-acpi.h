@@ -22,6 +22,9 @@
 #define ACPI_GICV3_DIST_MEM_SIZE	(SZ_64K)
 
 u8 acpi_gic_version(void);
+int acpi_madt_msi_frame_init(struct acpi_table_header *table);
+int acpi_get_msi_frame(int index, struct acpi_madt_generic_msi_frame **p);
+int acpi_get_num_msi_frames(void);
 
 #endif /* CONFIG_ACPI */
 #endif /* ARM_GIC_ACPI_H_ */
