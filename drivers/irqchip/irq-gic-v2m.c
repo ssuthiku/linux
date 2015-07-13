@@ -22,6 +22,10 @@
 #include <linux/of_pci.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/irqchip/arm-gic.h>
+#ifdef CONFIG_ARM_GIC_ACPI
+#include <linux/irqchip/arm-gic-acpi.h>
+#endif
 
 /*
 * MSI_TYPER:
@@ -114,17 +118,20 @@ static int gicv2m_irq_gic_domain_alloc(struct irq_domain *domain,
 				       unsigned int virq,
 				       irq_hw_number_t hwirq)
 {
-	struct of_phandle_args args;
 	struct irq_data *d;
 	int err;
+	void *info;
+	struct irq_domain *parent = domain->parent;
+	uint32_t data[3] = {GIC_INT_TYPE_GSI, hwirq, IRQ_TYPE_EDGE_RISING};
 
-	args.np = domain->parent->of_node;
-	args.args_count = 3;
-	args.args[0] = 0;
-	args.args[1] = hwirq - 32;
-	args.args[2] = IRQ_TYPE_EDGE_RISING;
+	if (parent->ops->init_alloc_info) {
+		err = parent->ops->init_alloc_info(data, 3, parent->of_node,
+						   &info);
+		if (err)
+			return err;
+	}
 
-	err = irq_domain_alloc_irqs_parent(domain, virq, 1, &args);
+	err = irq_domain_alloc_irqs_parent(domain, virq, 1, info);
 	if (err)
 		return err;
 
