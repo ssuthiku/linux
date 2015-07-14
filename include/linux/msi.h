@@ -14,38 +14,40 @@ extern int pci_msi_ignore_mask;
 /* Helper functions */
 struct irq_data;
 struct msi_desc;
+struct pci_dev;
 void __get_cached_msi_msg(struct msi_desc *entry, struct msi_msg *msg);
 void get_cached_msi_msg(unsigned int irq, struct msi_msg *msg);
 
 struct msi_desc {
-	struct {
-		__u8	is_msix	: 1;
-		__u8	multiple: 3;	/* log2 num of messages allocated */
-		__u8	multi_cap : 3;	/* log2 num of messages supported */
-		__u8	maskbit	: 1;	/* mask-pending bit supported ? */
-		__u8	is_64	: 1;	/* Address size: 0=32bit 1=64bit */
-		__u16	entry_nr;	/* specific enabled entry */
-		unsigned default_irq;	/* default pre-assigned irq */
-	} msi_attrib;
-
-	u32 masked;			/* mask bits */
-	unsigned int irq;
-	unsigned int nvec_used;		/* number of messages */
-	struct list_head list;
+	struct list_head		list;
+	unsigned int			irq;
+	unsigned int			nvec_used;	/* number of messages */
+	struct device *			dev;
+	struct msi_msg			msg;		/* Last set MSI message */
 
 	union {
-		void __iomem *mask_base;
-		u8 mask_pos;
+		struct {				/* For PCI MSI/MSI-X */
+			u32 masked;			/* mask bits */
+			struct {
+				__u8	is_msix	: 1;
+				__u8	multiple: 3;	/* log2 num of messages allocated */
+				__u8	multi_cap : 3;	/* log2 num of messages supported */
+				__u8	maskbit	: 1;	/* mask-pending bit supported ? */
+				__u8	is_64	: 1;	/* Address size: 0=32bit 1=64bit */
+				__u16	entry_nr;	/* specific enabled entry */
+				unsigned default_irq;	/* default pre-assigned irq */
+			} msi_attrib;
+			union {
+				u8	mask_pos;
+				void __iomem *mask_base;
+			};
+		};
 	};
-	struct pci_dev *dev;
-
-	/* Last set MSI message */
-	struct msi_msg msg;
 };
 
 /* Helpers to hide struct msi_desc implementation details */
-#define msi_desc_to_dev(desc)		(&(desc)->dev.dev)
-#define dev_to_msi_list(dev)		(&to_pci_dev((dev))->msi_list)
+#define msi_desc_to_dev(desc)		((desc)->dev)
+#define dev_to_msi_list(dev)		(&(dev)->msi_list)
 #define first_msi_entry(dev)		\
 	list_first_entry(dev_to_msi_list((dev)), struct msi_desc, list)
 #define for_each_msi_entry(desc, dev)	\
@@ -56,12 +58,17 @@ struct msi_desc {
 #define for_each_pci_msi_entry(desc, pdev)	\
 	for_each_msi_entry((desc), &(pdev)->dev)
 
-static inline struct pci_dev *msi_desc_to_pci_dev(struct msi_desc *desc)
+struct pci_dev *msi_desc_to_pci_dev(struct msi_desc *desc);
+void *msi_desc_to_pci_sysdata(struct msi_desc *desc);
+#else /* CONFIG_PCI_MSI */
+static inline void *msi_desc_to_pci_sysdata(struct msi_desc *desc)
 {
-	return desc->dev;
+	return NULL;
 }
 #endif /* CONFIG_PCI_MSI */
 
+struct msi_desc *alloc_msi_entry(struct device *dev);
+void free_msi_entry(struct msi_desc *entry);
 void __pci_read_msi_msg(struct msi_desc *entry, struct msi_msg *msg);
 void __pci_write_msi_msg(struct msi_desc *entry, struct msi_msg *msg);
 void pci_write_msi_msg(unsigned int irq, struct msi_msg *msg);
