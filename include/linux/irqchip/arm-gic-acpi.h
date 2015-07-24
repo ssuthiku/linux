@@ -21,5 +21,9 @@
 #define ACPI_GIC_CPU_IF_MEM_SIZE	(SZ_8K)
 #define ACPI_GICV3_DIST_MEM_SIZE	(SZ_64K)
 
+struct acpi_gsi_descriptor;
+int gic_acpi_gsi_desc_populate(struct acpi_gsi_descriptor *data,
+                               u32 gsi, unsigned int irq_type);
+
 #endif /* CONFIG_ACPI */
 #endif /* ARM_GIC_ACPI_H_ */

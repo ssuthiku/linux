@@ -108,6 +108,31 @@ static int __init acpi_gic_version_init(void)
 	return 0;
 }
 
+int gic_acpi_gsi_desc_populate(struct acpi_gsi_descriptor *data,
+			       u32 gsi, unsigned int irq_type)
+{
+	/*
+	 * Encode GSI and triggering information the way the GIC likes
+	 * them.
+	 */
+	if (WARN_ON(gsi < 16))
+		return -EINVAL;
+
+	if (gsi >= 32) {
+		data->param[0] = 0;		/* SPI */
+		data->param[1] = gsi - 32;
+		data->param[2] = irq_type;
+	} else {
+		data->param[0] = 1; 		/* PPI */
+		data->param[1] = gsi - 16;
+		data->param[2] = 0xff << 4 | irq_type;
+	}
+
+	data->param_count = 3;
+
+	return 0;
+}
+
 /*
  * This special acpi_table_id is the sentinel at the end of the
  * acpi_table_id[] array of all irqchips. It is automatically placed at
