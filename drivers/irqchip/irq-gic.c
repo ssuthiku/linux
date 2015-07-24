@@ -1084,31 +1084,6 @@ gic_acpi_parse_madt_distributor(struct acpi_subtable_header *header,
 	return 0;
 }
 
-static int gic_acpi_gsi_desc_populate(struct acpi_gsi_descriptor *data,
-				      u32 gsi, unsigned int irq_type)
-{
-	/*
-	 * Encode GSI and triggering information the way the GIC likes
-	 * them.
-	 */
-	if (WARN_ON(gsi < 16))
-		return -EINVAL;
-
-	if (gsi >= 32) {
-		data->param[0] = 0;		/* SPI */
-		data->param[1] = gsi - 32;
-		data->param[2] = irq_type;
-	} else {
-		data->param[0] = 1; 		/* PPI */
-		data->param[1] = gsi - 16;
-		data->param[2] = 0xff << 4 | irq_type;
-	}
-
-	data->param_count = 3;
-
-	return 0;
-}
-
 static int __init
 gic_v2_acpi_init(struct acpi_table_header *table)
 {
