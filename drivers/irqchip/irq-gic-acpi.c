@@ -16,6 +16,15 @@
 #include <linux/irqchip/arm-gic-acpi.h>
 #include <linux/irqchip/arm-gic-v3.h>
 
+struct gic_msi_frame_handle {
+	struct list_head list;
+	struct acpi_madt_generic_msi_frame frame;
+};
+
+static LIST_HEAD(msi_frame_list);
+
+static int acpi_num_msi_frame;
+
 /* GIC version presented in MADT GIC distributor structure */
 static u8 gic_version __initdata = ACPI_MADT_GIC_VERSION_NONE;
 
@@ -164,6 +173,74 @@ int gic_acpi_gsi_desc_populate(struct acpi_gsi_descriptor *data,
 	data->param_count = 3;
 
 	return 0;
+}
+
+static int __init
+acpi_parse_madt_msi(struct acpi_subtable_header *header,
+			const unsigned long end)
+{
+	struct gic_msi_frame_handle *ms;
+	struct acpi_madt_generic_msi_frame *frame;
+
+	frame = (struct acpi_madt_generic_msi_frame *)header;
+	if (BAD_MADT_ENTRY(frame, end))
+		return -EINVAL;
+
+	ms = kzalloc(sizeof(struct gic_msi_frame_handle *), GFP_KERNEL);
+	if (!ms)
+		return -ENOMEM;
+
+	memcpy(&ms->frame, frame, sizeof(struct acpi_madt_generic_msi_frame));
+
+	list_add(&ms->list, &msi_frame_list);
+
+	return 0;
+}
+
+inline int acpi_get_num_msi_frames(void)
+{
+	return acpi_num_msi_frame;
+}
+
+int __init acpi_madt_msi_frame_init(struct acpi_table_header *table)
+{
+	int ret = 0;
+
+	if (acpi_num_msi_frame > 0)
+		return ret;
+
+	ret = acpi_parse_entries(ACPI_SIG_MADT,
+				 sizeof(struct acpi_table_madt),
+				 acpi_parse_madt_msi, table,
+				 ACPI_MADT_TYPE_GENERIC_MSI_FRAME, 0);
+	if (ret == 0) {
+		pr_debug("No valid ACPI GIC MSI FRAME exist\n");
+		return ret;
+	}
+
+	acpi_num_msi_frame = ret;
+	return 0;
+}
+
+int acpi_get_msi_frame(int index, struct acpi_madt_generic_msi_frame **p)
+{
+	int i = 0;
+	struct gic_msi_frame_handle *m;
+
+	if (index >= acpi_num_msi_frame)
+		return -EINVAL;
+
+	list_for_each_entry(m, &msi_frame_list, list) {
+		if (i == index)
+			break;
+		i++;
+	}
+
+	if (i == acpi_num_msi_frame)
+		return -EINVAL;
+
+	*p = &(m->frame);
+	return  0;
 }
 
 /*
