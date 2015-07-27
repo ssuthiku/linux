@@ -24,6 +24,7 @@
 struct acpi_gsi_descriptor;
 int gic_acpi_gsi_desc_populate(struct acpi_gsi_descriptor *data,
                                u32 gsi, unsigned int irq_type);
+
 u8 acpi_gic_version(void);
 int acpi_madt_msi_frame_init(struct acpi_table_header *table);
 int acpi_get_msi_frame(int index, struct acpi_madt_generic_msi_frame **p);

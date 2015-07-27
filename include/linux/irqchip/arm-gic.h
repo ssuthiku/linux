@@ -109,6 +109,19 @@ static inline void gic_init(unsigned int nr, int start,
 
 int gicv2m_of_init(struct device_node *node, struct irq_domain *parent);
 
+#ifdef CONFIG_ACPI
+#include <linux/acpi.h>
+
+int gicv2m_acpi_init(struct acpi_table_header *table,
+		     struct irq_domain *parent);
+#else
+int gicv2m_acpi_init(struct acpi_table_header *table,
+		     struct irq_domain *parent);
+{
+	return 0;
+}
+#endif
+
 void gic_send_sgi(unsigned int cpu_id, unsigned int irq);
 int gic_get_cpu_id(unsigned int cpu);
 void gic_migrate_target(unsigned int new_cpu_id);
