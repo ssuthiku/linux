@@ -288,6 +288,13 @@ source "drivers/pci/Kconfig"
 source "drivers/pci/pcie/Kconfig"
 source "drivers/pci/hotplug/Kconfig"
 
+config PCI_MMCONFIG
+	def_bool y
+	select PCI_ECAM
+	select HAVE_PCI_ECAM
+	select GENERIC_PCI_ECAM
+	depends on ACPI
+
 endmenu
 
 menu "Kernel Features"
