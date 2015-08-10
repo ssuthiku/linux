@@ -61,29 +61,36 @@ static struct of_device_id its_device_id[] = {
 	{},
 };
 
-static int __init its_pmsi_init(void)
+static int __init its_pmsi_init_one(void *token)
+{
+	struct irq_domain *parent;
+
+	parent = irq_find_matching_host(token, DOMAIN_BUS_NEXUS);
+	if (!parent || !msi_get_domain_info(parent)) {
+		pr_err("Unable to locate ITS domain\n");
+		return -ENXIO;
+	}
+
+	if (!platform_msi_create_irq_domain(token, &its_pmsi_domain_info,
+					    parent)) {
+		pr_err("Unable to create platform domain\n");
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+static int __init its_pmsi_of_init(void)
 {
 	struct device_node *np;
-	struct irq_domain *parent;
 
 	for (np = of_find_matching_node(NULL, its_device_id); np;
 	     np = of_find_matching_node(np, its_device_id)) {
 		if (!of_property_read_bool(np, "msi-controller"))
 			continue;
 
-		parent = irq_find_matching_host(np, DOMAIN_BUS_NEXUS);
-		if (!parent || !msi_get_domain_info(parent)) {
-			pr_err("%s: unable to locate ITS domain\n",
-			       np->full_name);
+		if (its_pmsi_init_one(np))
 			continue;
-		}
-
-		if (!platform_msi_create_irq_domain(np, &its_pmsi_domain_info,
-						    parent)) {
-			pr_err("%s: unable to create platform domain\n",
-			       np->full_name);
-			continue;
-		}
 
 		pr_info("Platform MSI: %s domain created\n", np->full_name);
 	}
