@@ -361,3 +361,98 @@ int __init gicv2m_of_init(struct device_node *node, struct irq_domain *parent)
 
 	return ret;
 }
+
+#ifdef CONFIG_ACPI
+static int acpi_num_msi;
+
+/**
+ * Note:
+ * This is used as a temporary variable since we cannot
+ * pass args into acpi_parse_masdt_msi() when calling
+ * acpi_parse_entries(),
+ */
+struct irq_domain *acpi_parent_domain;
+
+static int __init
+acpi_parse_madt_msi(struct acpi_subtable_header *header,
+		    const unsigned long end)
+{
+	int ret;
+	struct resource res;
+	u32 spi_start = 0, nr_spis = 0;
+	struct acpi_madt_generic_msi_frame *m;
+	struct fwnode_handle *domain_handle = NULL;
+
+	m = (struct acpi_madt_generic_msi_frame *)header;
+	if (BAD_MADT_ENTRY(m, end))
+		return -EINVAL;
+
+	res.start = m->base_address;
+	res.end = m->base_address + 0x1000;
+
+	if (m->flags & ACPI_MADT_OVERRIDE_SPI_VALUES) {
+		spi_start = m->spi_base;
+		nr_spis = m->spi_count;
+
+		pr_info("ACPI overriding V2M MSI_TYPER (base:%u, num:%u)\n",
+			spi_start, nr_spis);
+	}
+
+	domain_handle = irq_domain_alloc_fwnode((void *)m->base_address);
+	if (!domain_handle) {
+		pr_err("Unable to allocate GICv2m domain token\n");
+		return -EINVAL;
+	}
+
+	if (gicv2m_init_one(acpi_parent_domain, spi_start, nr_spis, &res,
+			    to_of_node(domain_handle))) {
+		ret = -EINVAL;
+		goto err_out;
+	}
+
+	return 0;
+err_out:
+	if (domain_handle)
+		irq_domain_free_fwnode(domain_handle);
+	return ret;
+}
+
+static int gicv2m_get_acpi_dom_token(struct device *dev, void **tok)
+{
+	int ret = -EINVAL;
+	struct v2m_data *data;
+
+	if (acpi_num_msi) {
+		/* We only support one MSI frame at the moment. */
+		data = list_first_entry_or_null(&v2m_data_list,
+						struct v2m_data, list);
+		if (data) {
+			*tok = data->dom_token;
+			ret = 0;
+		}
+	}
+
+	return ret;
+}
+
+int __init gicv2m_acpi_init(struct irq_domain *parent)
+{
+	if (acpi_num_msi > 0)
+		return 0;
+
+	acpi_parent_domain = parent;
+
+	acpi_num_msi = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_MSI_FRAME,
+				      acpi_parse_madt_msi, 0);
+
+	if (acpi_num_msi) {
+		pci_msi_register_token_provider(&gicv2m_get_acpi_dom_token);
+		platform_msi_register_token_provider(&gicv2m_get_acpi_dom_token);
+	} else {
+		pr_debug("No valid ACPI GIC MSI FRAME exist\n");
+	}
+
+	return 0;
+}
+
+#endif /* CONFIG_ACPI */
