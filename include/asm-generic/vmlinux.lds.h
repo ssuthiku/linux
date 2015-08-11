@@ -181,6 +181,18 @@
 #define CPUIDLE_METHOD_OF_TABLES() OF_TABLE(CONFIG_CPU_IDLE, cpuidle_method)
 #define EARLYCON_OF_TABLES()	OF_TABLE(CONFIG_SERIAL_EARLYCON, earlycon)
 
+#ifdef CONFIG_ACPI
+#define ACPI_TABLE(name)						\
+	. = ALIGN(8);							\
+	VMLINUX_SYMBOL(__##name##_acpi_table) = .;			\
+	*(__##name##_acpi_table)					\
+	*(__##name##_acpi_table_end)
+
+#define IRQCHIP_ACPI_MATCH_TABLE()	ACPI_TABLE(irqchip)
+#else
+#define IRQCHIP_ACPI_MATCH_TABLE()
+#endif
+
 #define KERNEL_DTB()							\
 	STRUCT_ALIGN();							\
 	VMLINUX_SYMBOL(__dtb_start) = .;				\
@@ -516,6 +528,7 @@
 	CPUIDLE_METHOD_OF_TABLES()					\
 	KERNEL_DTB()							\
 	IRQCHIP_OF_MATCH_TABLE()					\
+	IRQCHIP_ACPI_MATCH_TABLE()					\
 	EARLYCON_TABLE()						\
 	EARLYCON_OF_TABLES()
 

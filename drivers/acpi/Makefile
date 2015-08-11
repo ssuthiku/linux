@@ -27,6 +27,8 @@ acpi-$(CONFIG_ACPI_SYSTEM_POWER_STATES_SUPPORT) += sleep.o
 acpi-y				+= device_pm.o
 acpi-$(CONFIG_ACPI_SLEEP)	+= proc.o
 
+# IRQ controller probe
+acpi-y				+= irq.o
 
 #
 # ACPI Bus and Device Drivers
