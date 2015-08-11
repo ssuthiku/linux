@@ -293,6 +293,9 @@ irq_hw_number_t pci_msi_domain_calc_hwirq(struct pci_dev *dev,
 					  struct msi_desc *desc);
 int pci_msi_domain_check_cap(struct irq_domain *domain,
 			     struct msi_domain_info *info, struct device *dev);
+
+void pci_msi_register_token_provider(int (*fn)(struct device *, void **tok));
+int pci_msi_get_domain_token(struct device *dev, void **tok);
 #endif /* CONFIG_PCI_MSI_IRQ_DOMAIN */
 
 #endif /* LINUX_MSI_H */
