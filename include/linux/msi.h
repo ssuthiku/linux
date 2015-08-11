@@ -15,6 +15,7 @@ extern int pci_msi_ignore_mask;
 struct irq_data;
 struct msi_desc;
 struct pci_dev;
+enum irq_domain_bus_token;
 void __get_cached_msi_msg(struct msi_desc *entry, struct msi_msg *msg);
 void get_cached_msi_msg(unsigned int irq, struct msi_msg *msg);
 
@@ -240,6 +241,14 @@ struct irq_domain *platform_msi_create_irq_domain(struct device_node *np,
 int platform_msi_domain_alloc_irqs(struct device *dev, unsigned int nvec,
 				   irq_write_msi_msg_t write_msi_msg);
 void platform_msi_domain_free_irqs(struct device *dev);
+
+void msi_register_token_provider(int (*fn)(struct device *,
+					   enum irq_domain_bus_token bus_tok,
+					   void **tok));
+
+int msi_get_domain_token(struct device *dev,
+			 enum irq_domain_bus_token bus_tok,
+			 void **tok);
 #endif /* CONFIG_GENERIC_MSI_IRQ_DOMAIN */
 
 #ifdef CONFIG_PCI_MSI_IRQ_DOMAIN

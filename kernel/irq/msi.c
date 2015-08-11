@@ -351,4 +351,40 @@ struct msi_domain_info *msi_get_domain_info(struct irq_domain *domain)
 	return (struct msi_domain_info *)domain->host_data;
 }
 
+static int (*msi_get_token_cb)(struct device *dev,
+			       enum irq_domain_bus_token bus_tok,
+			       void **tok);
+
+/**
+ * msi_register_token_provider - Register MSI irq domain token callback
+ * @fn:	The interrupt domain to retrieve
+ *
+ * This should be called by irqchip driver, which is the parent of
+ * the MSI domain to provide callback interface to query MSI domain token.
+ */
+void msi_register_token_provider(int (*fn)(struct device *,
+					   enum irq_domain_bus_token bus_tok,
+					   void **tok))
+{
+	msi_get_token_cb = fn;
+}
+
+/**
+ * msi_get_domain_token - Query MSI domain token for @dev
+ * @dev:	The device that we try to query MSI domain token for
+ * @tok:	The returned token for @dev
+ *
+ * This is used to query MSI domain token when setting up MSI domain
+ * for a device. Returns 0 if token found / -EINVAL if not found
+ */
+int msi_get_domain_token(struct device *dev,
+			 enum irq_domain_bus_token bus_tok,
+			 void **tok)
+{
+	if (msi_get_token_cb)
+		return msi_get_token_cb(dev, bus_tok, tok);
+
+	return -EINVAL;
+}
+
 #endif /* CONFIG_GENERIC_MSI_IRQ_DOMAIN */
