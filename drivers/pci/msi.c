@@ -1327,4 +1327,34 @@ struct irq_domain *pci_msi_create_default_irq_domain(struct device_node *node,
 
 	return domain;
 }
+
+struct fwnode_handle *(*pci_msi_get_fwnode_cb)(struct device *dev);
+
+/**
+ * pci_msi_register_fwnode_provider - Register callback to retrieve fwnode
+ * @fn:		The interrupt domain to retrieve
+ *
+ * This should be called by irqchip driver, which is the parent of
+ * the MSI domain to provide callback interface to query fwnode.
+ */
+void
+pci_msi_register_fwnode_provider(struct fwnode_handle *(*fn)(struct device *))
+{
+	pci_msi_get_fwnode_cb = fn;
+}
+
+/**
+ * pci_msi_get_fwnode - Query fwnode for MSI controller of the @dev
+ * @dev:	The device that we try to query MSI domain token for
+ *
+ * This is used to query MSI domain token when setting up MSI domain
+ * for a device. Returns fwnode_handle * if token found / NULL if not found
+ */
+struct fwnode_handle *pci_msi_get_fwnode(struct device *dev)
+{
+	if (pci_msi_get_fwnode_cb)
+		return pci_msi_get_fwnode_cb(dev);
+
+	return -EINVAL;
+}
 #endif /* CONFIG_PCI_MSI_IRQ_DOMAIN */
