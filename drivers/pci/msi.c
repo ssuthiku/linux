@@ -1327,4 +1327,34 @@ struct irq_domain *pci_msi_create_default_irq_domain(struct device_node *node,
 
 	return domain;
 }
+
+static int (*pci_msi_get_token_cb)(struct device *dev, void **tok);
+
+/**
+ * pci_msi_register_token_provider - Register MSI irq domain token callback
+ * @fn:	The interrupt domain to retrieve
+ *
+ * This should be called by irqchip driver, which is the parent of
+ * the MSI domain to provide callback interface to query MSI domain token.
+ */
+void pci_msi_register_token_provider(int (*fn)(struct device *, void **tok))
+{
+	pci_msi_get_token_cb = fn;
+}
+
+/**
+ * pci_msi_get_domain_token - Query MSI domain token for @dev
+ * @dev:	The device that we try to query MSI domain token for
+ * @tok:	The returned token for @dev
+ *
+ * This is used to query MSI domain token when setting up MSI domain
+ * for a device. Returns 0 if token found / -EINVAL if not found
+ */
+int pci_msi_get_domain_token(struct device *dev, void **tok)
+{
+	if (pci_msi_get_token_cb)
+		return pci_msi_get_token_cb(dev, tok);
+
+	return -EINVAL;
+}
 #endif /* CONFIG_PCI_MSI_IRQ_DOMAIN */
