@@ -39,6 +39,7 @@
 struct redist_region {
 	void __iomem		*redist_base;
 	phys_addr_t		phys_base;
+	bool			single_redist;
 };
 
 struct gic_chip_data {
@@ -477,6 +478,9 @@ static int gic_populate_rdist(void)
 					i, &gic_data_rdist()->phys_base);
 				return 0;
 			}
+
+			if (gic_data.redist_regions[i].single_redist)
+				break;
 
 			if (gic_data.redist_stride) {
 				ptr += gic_data.redist_stride;
@@ -983,15 +987,12 @@ static u32 nr_redist_regions __initdata;
 
 static int __init
 gic_acpi_match_redist(struct acpi_subtable_header *header,
-		     const unsigned long end)
+		      const unsigned long end)
 {
 	struct acpi_madt_generic_redistributor *redist;
 
-	if (BAD_MADT_ENTRY(header, end))
-		return -EINVAL;
-
 	redist = (struct acpi_madt_generic_redistributor *)header;
-	if (!redist->base_address)
+	if (BAD_MADT_ENTRY(redist, end) || !redist->base_address)
 		return -EINVAL;
 
 	return 0;
@@ -1033,7 +1034,7 @@ static bool __init acpi_gic_redist_is_present(void)
 }
 
 static int __init
-gic_acpi_register_redist(phys_addr_t phys_base, u64 size)
+gic_acpi_register_redist(phys_addr_t phys_base, u64 size, bool flag)
 {
 	void __iomem *redist_base;
 
@@ -1045,6 +1046,7 @@ gic_acpi_register_redist(phys_addr_t phys_base, u64 size)
 
 	redist_regs[nr_redist_regions].phys_base = phys_base;
 	redist_regs[nr_redist_regions].redist_base = redist_base;
+	redist_regs[nr_redist_regions].single_redist = flag;
 	nr_redist_regions++;
 	return 0;
 }
@@ -1056,7 +1058,29 @@ gic_acpi_parse_madt_redist(struct acpi_subtable_header *header,
 	struct acpi_madt_generic_redistributor *redist;
 
 	redist = (struct acpi_madt_generic_redistributor *)header;
-	return gic_acpi_register_redist(redist->base_address, redist->length);
+	return gic_acpi_register_redist(redist->base_address, redist->length,
+					false);
+}
+
+static int __init
+gic_acpi_parse_madt_gicc(struct acpi_subtable_header *header,
+			const unsigned long end)
+{
+	struct acpi_madt_generic_interrupt *gicc;
+	void __iomem *redist_base;
+	u64 typer;
+	u32 size;
+
+	gicc = (struct acpi_madt_generic_interrupt *)header;
+	redist_base = ioremap(gicc->gicr_base_address, SZ_64K * 2);
+	if (!redist_base)
+		return -ENOMEM;
+
+	typer = readq_relaxed(redist_base + GICR_TYPER);
+	/* don't map reserved page as it's buggy to access it */
+	size = (typer & GICR_TYPER_VLPIS) ? SZ_64K * 3 : SZ_64K * 2;
+	iounmap(redist_base);
+	return gic_acpi_register_redist(gicc->gicr_base_address, size, true);
 }
 
 static int gic_acpi_gsi_desc_populate(struct acpi_gsi_descriptor *data,
@@ -1097,6 +1121,43 @@ static bool __init gic_validate_dist(struct acpi_subtable_header *header,
 
 #define ACPI_GICV3_DIST_MEM_SIZE (SZ_64K)
 
+static int __init gic_acpi_count_gicr_regions(int *count)
+{
+	/* Count how many redistributor regions we have */
+	*count = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_REDISTRIBUTOR,
+				       gic_acpi_match_redist, 0);
+	if (*count > 0)
+		return 0;
+
+	*count = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_INTERRUPT,
+				       gic_acpi_match_gicc, 0);
+	if (*count > 0)
+		return 0;
+
+	pr_err("No valid GICR entries\n");
+	return -ENODEV;
+}
+
+static int __init gic_acpi_collect_gicr_base(void)
+{
+	int count;
+
+	/* Collect redistributor base addresses in GICR entries */
+	count = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_REDISTRIBUTOR,
+			gic_acpi_parse_madt_redist, 0);
+	if (count > 0)
+		return 0;
+
+	/* Collect redistributor base addresses in GICC entries */
+	count = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_INTERRUPT,
+			gic_acpi_parse_madt_gicc, 0);
+	if (count > 0)
+		return 0;
+
+	pr_info("No valid GICR entries exist\n");
+	return -ENODEV;
+}
+
 static int __init
 gic_acpi_init(struct acpi_subtable_header *header, const unsigned long end)
 {
@@ -1118,14 +1179,9 @@ gic_acpi_init(struct acpi_subtable_header *header, const unsigned long end)
 		goto out_dist_unmap;
 	}
 
-	/* Count how many redistributor regions we have */
-	count = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_REDISTRIBUTOR,
-				      gic_acpi_match_redist, 0);
-	if (count <= 0) {
-		pr_err("No valid GICR entries\n");
-		err = -EINVAL;
+	err = gic_acpi_count_gicr_regions(&count);
+	if (err)
 		goto out_dist_unmap;
-	}
 
 	redist_regs = kzalloc(sizeof(*redist_regs) * count, GFP_KERNEL);
 	if (!redist_regs) {
@@ -1133,14 +1189,9 @@ gic_acpi_init(struct acpi_subtable_header *header, const unsigned long end)
 		goto out_dist_unmap;
 	}
 
-	/* Collect redistributor base addresses */
-	count = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_REDISTRIBUTOR,
-				     gic_acpi_parse_madt_redist, 0);
-	if (count <= 0) {
-		pr_info("No valid GICR entries exist\n");
-		err = -EINVAL;
+	err = gic_acpi_collect_gicr_base();
+	if (err)
 		goto out_redist_unmap;
-	}
 
 	err = gic_init_bases(dist_base, redist_regs, nr_redist_regions, 0,
 			     (void *)dist->base_address);
