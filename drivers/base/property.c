@@ -538,10 +538,14 @@ bool device_dma_is_coherent(struct device *dev)
 {
 	bool coherent = false;
 
-	if (IS_ENABLED(CONFIG_OF) && dev->of_node)
+	if (IS_ENABLED(CONFIG_OF) && dev->of_node) {
 		coherent = of_dma_is_coherent(dev->of_node);
-	else
-		acpi_check_dma(ACPI_COMPANION(dev), &coherent);
+	} else {
+		int ret = acpi_check_dma_coherency(ACPI_COMPANION(dev));
+
+		if (ret >= 0)
+			coherent = ret;
+	}
 
 	return coherent;
 }
