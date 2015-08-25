@@ -168,7 +168,6 @@ int acpi_bind_one(struct device *dev, struct acpi_device *acpi_dev)
 	struct list_head *physnode_list;
 	unsigned int node_id;
 	int retval = -EINVAL;
-	bool coherent;
 
 	if (has_acpi_companion(dev)) {
 		if (acpi_dev) {
@@ -225,8 +224,9 @@ int acpi_bind_one(struct device *dev, struct acpi_device *acpi_dev)
 	if (!has_acpi_companion(dev))
 		ACPI_COMPANION_SET(dev, acpi_dev);
 
-	if (acpi_check_dma(acpi_dev, &coherent))
-		arch_setup_dma_ops(dev, 0, 0, NULL, coherent);
+	retval = acpi_check_dma_coherency(acpi_dev);
+	if (retval >= 0)
+		arch_setup_dma_ops(dev, 0, 0, NULL, retval);
 
 	acpi_physnode_link_name(physical_node_name, node_id);
 	retval = sysfs_create_link(&acpi_dev->dev.kobj, &dev->kobj,
