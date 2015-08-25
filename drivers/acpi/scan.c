@@ -1328,6 +1328,45 @@ void acpi_free_pnp_ids(struct acpi_device_pnp *pnp)
 	kfree(pnp->unique_id);
 }
 
+/**
+ * acpi_check_dma_coherency - Check DMA coherency for the specified device.
+ * @adev: The pointer to acpi device to check coherency attribute
+ *
+ * Return -ENOTSUPP if DMA is not supported. Otherwise, return 1 if the
+ * device support coherent DMA, or 0 for non-coherent DMA.
+ */
+int acpi_check_dma_coherency(struct acpi_device *adev)
+{
+	int ret = -ENOTSUPP;
+
+	if (!adev)
+		return ret;
+
+	/**
+	 * Currently, we only support _CCA=1 (i.e. coherent_dma=1)
+	 * This should be equivalent to specifying dma-coherent for
+	 * a device in OF.
+	 *
+	 * For the case when _CCA=0 (i.e. coherent_dma=0 && cca_seen=1),
+	 * we have two choices:
+	 *   1. Do not support and disable DMA.
+	 *   2. Support but rely on arch-specific cache maintenance for
+	 *      non-coherenje DMA operations.
+	 * Currently, we implement case 2 above.
+	 *
+	 * For the case when _CCA is missing (i.e. cca_seen=0) and
+	 * platform specifies ACPI_CCA_REQUIRED, we do not support DMA,
+	 * and fallback to arch-specific default handling.
+	 *
+	 * See acpi_init_coherency() for more info.
+	 */
+	if (!adev->flags.cca_seen && IS_ENABLED(CONFIG_ACPI_CCA_REQUIRED))
+		return ret;
+
+	return adev->flags.coherent_dma;
+}
+EXPORT_SYMBOL_GPL(acpi_check_dma_coherency);
+
 static void acpi_init_coherency(struct acpi_device *adev)
 {
 	unsigned long long cca = 0;
