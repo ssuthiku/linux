@@ -574,9 +574,9 @@ static inline int acpi_device_modalias(struct device *dev,
 	return -ENODEV;
 }
 
-static inline bool acpi_check_dma(struct acpi_device *adev, bool *coherent)
+static inline int acpi_check_dma_coherency(struct acpi_device *adev)
 {
-	return false;
+	return -ENOTSUPP;
 }
 
 #define ACPI_PTR(_ptr)	(NULL)
