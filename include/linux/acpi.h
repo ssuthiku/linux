@@ -832,21 +832,37 @@ static inline struct acpi_device *acpi_get_next_child(struct device *dev,
 #endif
 
 #ifdef CONFIG_ACPI
-#define ACPI_DECLARE(table, name, table_id, subtable, data, fn)	\
+struct acpi_table_id;
+typedef bool (*acpi_table_id_validate)(struct acpi_subtable_header *,
+				       struct acpi_table_id *);
+
+#define ACPI_TABLE_ID_LEN	5
+
+struct acpi_table_id {
+	__u8 id[ACPI_TABLE_ID_LEN];
+	__u8 type;
+	acpi_tbl_entry_handler handler;
+	acpi_table_id_validate validate;
+	kernel_ulong_t driver_data;
+};
+
+#define ACPI_DECLARE(table, name, table_id, subtable, valid, data, fn) \
 	static const struct acpi_table_id __acpi_table_##name		\
 		__used __section(__##table##_acpi_table)		\
 		 = { .id = table_id,					\
 		     .type = subtable,					\
-		     .handler = (void *)fn,				\
+		     .validate = valid,					\
+		     .handler = fn,					\
 		     .driver_data = data }
 #else
-#define ACPI_DECLARE(table, name, table_id, subtable, data, fn)		\
-	static const struct acpi_table_id __acpi_table_##name		\
+#define ACPI_DECLARE(table, name, table_id, subtable, validate, data, fn) \
+	static const void * __acpi_table_##name[]			\
 		__attribute__((unused))					\
-		 = { .id = table_id,					\
-		     .type = subtable,					\
-		     .handler = (void *)fn,				\
-		     .driver_data = data }
+		 = { (void *) table_id,					\
+		     (void *) subtable,					\
+		     (void *) valid,					\
+		     (void *) fn,					\
+		     (void *) data }
 #endif
 
 #endif	/*_LINUX_ACPI_H*/

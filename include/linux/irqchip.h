@@ -27,16 +27,19 @@
 #define IRQCHIP_DECLARE(name, compat, fn) OF_DECLARE_2(irqchip, name, compat, fn)
 
 /*
- * This macro must be used by the different ARM GIC drivers to declare
+ * This macro must be used by the different irqchip drivers to declare
  * the association between their version and their initialization function.
  *
  * @name: name that must be unique accross all IRQCHIP_ACPI_DECLARE of the
  * same file.
- * @gic_version: version of GIC
+ * @subtable: Subtable to be identified in MADT
+ * @validate: Function to be called on that subtable to check its validity.
+ *            Can be NULL.
+ * @data: data to be checked by the validate function.
  * @fn: initialization function
  */
-#define IRQCHIP_ACPI_DECLARE(name, subtable, version, fn)	\
-	ACPI_DECLARE(irqchip, name, ACPI_SIG_MADT, subtable, version, fn)
+#define IRQCHIP_ACPI_DECLARE(name, subtable, validate, data, fn)	\
+	ACPI_DECLARE(irqchip, name, ACPI_SIG_MADT, subtable, validate, data, fn)
 
 #ifdef CONFIG_IRQCHIP
 void irqchip_init(void);
