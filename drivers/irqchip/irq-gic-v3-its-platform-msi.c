@@ -15,7 +15,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/acpi.h>
 #include <linux/device.h>
+#include <linux/iort.h>
 #include <linux/msi.h>
 #include <linux/of.h>
 #include <linux/of_irq.h>
@@ -36,6 +38,9 @@ static int its_pmsi_prepare(struct irq_domain *domain, struct device *dev,
 	/* Suck the DeviceID out of the msi-parent property */
 	ret = of_property_read_u32_index(dev->of_node, "msi-parent",
 					 1, &dev_id);
+	if (ret)
+		ret = iort_find_dev_id(dev, &dev_id);
+
 	if (ret)
 		return ret;
 
@@ -94,6 +99,47 @@ static int __init its_pmsi_of_init(void)
 
 		pr_info("Platform MSI: %s domain created\n", np->full_name);
 	}
+
+	return 0;
+}
+
+#ifdef CONFIG_ACPI
+
+static int __init
+its_pmsi_parse_madt(struct acpi_subtable_header *header,
+		    const unsigned long end)
+{
+	struct acpi_madt_generic_translator *its_entry =
+				(struct acpi_madt_generic_translator *)header;
+
+	if (its_pmsi_init_one((void *)its_entry->base_address))
+		return 0;
+
+	pr_info("Platform MSI: ITS@ID[%d] domain created\n",
+		its_entry->translation_id);
+	return 0;
+}
+
+static int __init its_pmsi_acpi_init(void)
+{
+
+	if (acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_TRANSLATOR,
+				  its_pmsi_parse_madt, 0) < 0)
+		pr_err("Platform MSI: error while parsing GIC ITS entries\n");
+
+	return 0;
+}
+#else
+inline static int __init its_pmsi_acpi_init(void)
+{
+	return 0;
+}
+#endif
+
+static int __init its_pmsi_init(void)
+{
+	its_pmsi_of_init();
+	its_pmsi_acpi_init();
 
 	return 0;
 }

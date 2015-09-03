@@ -15,6 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/iort.h>
 #include <linux/msi.h>
 #include <linux/of.h>
 #include <linux/of_irq.h>
@@ -59,8 +60,10 @@ static int its_pci_msi_vec_count(struct pci_dev *pdev)
 static int its_get_pci_alias(struct pci_dev *pdev, u16 alias, void *data)
 {
 	struct its_pci_alias *dev_alias = data;
+	u32 dev_id;
 
-	dev_alias->dev_id = alias;
+	dev_alias->dev_id = iort_find_pci_id(pdev, alias, &dev_id) == 0 ?
+								dev_id : alias;
 	if (pdev != dev_alias->pdev)
 		dev_alias->count += its_pci_msi_vec_count(dev_alias->pdev);
 
@@ -141,6 +144,47 @@ static int __init its_pci_of_msi_init(void)
 
 		pr_info("PCI/MSI: %s domain created\n", np->full_name);
 	}
+
+	return 0;
+}
+
+#ifdef CONFIG_ACPI
+
+static int __init
+its_pci_msi_parse_madt(struct acpi_subtable_header *header,
+		    const unsigned long end)
+{
+	struct acpi_madt_generic_translator *its_entry =
+				(struct acpi_madt_generic_translator *)header;
+
+	if (its_pci_msi_init_one((void *)its_entry->base_address))
+		return 0;
+
+	pr_info("PCI/MSI: ITS@ID[%d] domain created\n",
+		its_entry->translation_id);
+	return 0;
+}
+
+static int __init its_pci_acpi_msi_init(void)
+{
+
+	if (acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_TRANSLATOR,
+				  its_pci_msi_parse_madt, 0) < 0)
+		pr_err("PCI/MSI: error while parsing GIC ITS entries\n");
+
+	return 0;
+}
+#else
+inline static int __init its_pci_acpi_msi_init(void)
+{
+	return 0;
+}
+#endif
+
+static int __init its_pci_msi_init(void)
+{
+	its_pci_of_msi_init();
+	its_pci_acpi_msi_init();
 
 	return 0;
 }
