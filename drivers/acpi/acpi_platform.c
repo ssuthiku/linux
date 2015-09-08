@@ -14,8 +14,10 @@
 #include <linux/acpi.h>
 #include <linux/device.h>
 #include <linux/err.h>
+#include <linux/irqdomain.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/msi.h>
 #include <linux/dma-mapping.h>
 #include <linux/platform_device.h>
 
@@ -29,6 +31,19 @@ static const struct acpi_device_id forbidden_id_list[] = {
 	{"PNP0200", 0},	/* AT DMA Controller */
 	{"", 0},
 };
+
+static void acpi_configure_msi_domain(struct device *dev)
+{
+	void *token;
+	struct irq_domain *d;
+
+	if (platform_msi_get_domain_token(dev, &token))
+		return;
+
+	d = irq_find_matching_host(token, DOMAIN_BUS_PLATFORM_MSI);
+	if (d)
+		dev_set_msi_domain(dev, d);
+}
 
 /**
  * acpi_create_platform_device - Create platform device for ACPI device node
@@ -116,6 +131,8 @@ struct platform_device *acpi_create_platform_device(struct acpi_device *adev)
 	else
 		dev_dbg(&adev->dev, "created platform device %s\n",
 			dev_name(&pdev->dev));
+
+	acpi_configure_msi_domain(&pdev->dev);
 
 	kfree(resources);
 	return pdev;
