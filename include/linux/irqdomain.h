@@ -159,6 +159,11 @@ enum {
 	IRQ_DOMAIN_FLAG_NONCORE		= (1 << 16),
 };
 
+extern void *irq_domain_alloc_domain_token(void *data);
+extern void irq_domain_free_domain_token(void *domain_token);
+extern void *irq_domain_token_to_data(void *domain_token);
+extern void *irq_domain_find_domain_token(void *data);
+
 #ifdef CONFIG_IRQ_DOMAIN
 extern struct device_node *irq_domain_token_to_of_node(void *domain_token);
 
