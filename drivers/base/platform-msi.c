@@ -280,3 +280,33 @@ void platform_msi_domain_free_irqs(struct device *dev)
 	msi_domain_free_irqs(dev->msi_domain, dev);
 	platform_msi_free_descs(dev);
 }
+
+static int (*platform_msi_get_token_cb)(struct device *dev, void **tok);
+
+/**
+ * platform_msi_register_token_provider - Register MSI irq domain token callback
+ * @fn:	The interrupt domain to retrieve
+ *
+ * This should be called by irqchip driver, which is the parent of
+ * the MSI domain to provide callback interface to query MSI domain token.
+ */
+void platform_msi_register_token_provider(int (*fn)(struct device *, void **tok))
+{
+	platform_msi_get_token_cb = fn;
+}
+
+/**
+ * platform_msi_get_domain_token - Query MSI domain token for @dev
+ * @dev:	The device that we try to query MSI domain token for
+ * @tok:	The returned token for @dev
+ *
+ * This is used to query MSI domain token when setting up MSI domain
+ * for a device. Returns 0 if token found / -EINVAL if not found
+ */
+int platform_msi_get_domain_token(struct device *dev, void **tok)
+{
+	if (platform_msi_get_token_cb)
+		return platform_msi_get_token_cb(dev, tok);
+
+	return -EINVAL;
+}

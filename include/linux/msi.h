@@ -276,6 +276,9 @@ struct irq_domain *platform_msi_create_irq_domain(struct device_node *np,
 int platform_msi_domain_alloc_irqs(struct device *dev, unsigned int nvec,
 				   irq_write_msi_msg_t write_msi_msg);
 void platform_msi_domain_free_irqs(struct device *dev);
+
+void platform_msi_register_token_provider(int (*fn)(struct device *, void **tok));
+int platform_msi_get_domain_token(struct device *dev, void **tok);
 #endif /* CONFIG_GENERIC_MSI_IRQ_DOMAIN */
 
 #ifdef CONFIG_PCI_MSI_IRQ_DOMAIN
