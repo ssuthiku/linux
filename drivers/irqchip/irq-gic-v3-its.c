@@ -15,10 +15,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/acpi.h>
 #include <linux/bitmap.h>
 #include <linux/cpu.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
+#include <linux/iort.h>
 #include <linux/log2.h>
 #include <linux/mm.h>
 #include <linux/msi.h>
@@ -1546,19 +1548,113 @@ int its_cpu_init(void)
 	return 0;
 }
 
+#ifdef CONFIG_ACPI
+static struct irq_domain *its_parent __initdata;
+
+static int __init
+its_acpi_get_pci_msi_dom_tok(struct device *dev, void **token)
+{
+	void *domain_token;
+	int its_id;
+
+	if (iort_dev_find_its_id(dev, ACPI_IORT_NODE_PCI_ROOT_COMPLEX,
+				 0, &its_id))
+		return -ENXIO;
+
+	domain_token = iort_find_msi_domain_token(its_id);
+	if (!domain_token)
+		return -ENXIO;
+
+	*token = domain_token;
+	return 0;
+}
+
+static int __init
+its_acpi_get_plat_msi_dom_tok(struct device *dev, void **token)
+{
+	void *domain_token;
+	int its_id;
+
+	if (iort_dev_find_its_id(dev, ACPI_IORT_NODE_NAMED_COMPONENT,
+				 0, &its_id))
+		return -ENXIO;
+
+	domain_token = iort_find_msi_domain_token(its_id);
+	if (!domain_token)
+		return -ENXIO;
+
+	*token = domain_token;
+	return 0;
+}
+
+static int __init
+gic_acpi_parse_madt_its(struct acpi_subtable_header *header,
+			const unsigned long end)
+{
+	struct acpi_madt_generic_translator *its_entry;
+	struct its_node *its;
+	void *token;
+
+	if (BAD_MADT_ENTRY(header, end))
+		return -EINVAL;
+
+	its_entry = (struct acpi_madt_generic_translator *)header;
+	token = irq_domain_alloc_domain_token((void *)its_entry->base_address);
+	if (!token) {
+		pr_err("Unable to allocate ITS domain token\n");
+		return -EINVAL;
+	}
+
+	pr_info("ACPI: ITS: ID: 0x%x\n", its_entry->translation_id);
+
+	/* ITS works as msi controller in ACPI case */
+	its = its_probe_one(its_entry->base_address, 2 * SZ_64K, its_parent,
+			    true, token);
+	if (!IS_ERR(its)) {
+		iort_register_domain_token(its_entry->translation_id, token);
+		pci_msi_register_token_provider(
+					&its_acpi_get_pci_msi_dom_tok);
+		platform_msi_register_token_provider(
+					&its_acpi_get_plat_msi_dom_tok);
+		return 0;
+	}
+
+	pr_err("ACPI: failed probing num %d ITS\n", its_entry->translation_id);
+	irq_domain_free_domain_token(token);
+	return PTR_ERR(its);
+}
+
+void __init its_acpi_probe(struct irq_domain *parent_domain)
+{
+	int count;
+
+	its_parent = parent_domain;
+	count = acpi_table_parse_madt(ACPI_MADT_TYPE_GENERIC_TRANSLATOR,
+			gic_acpi_parse_madt_its, 0);
+	if (count <= 0)
+		pr_info("No valid GIC ITS entries exist\n");
+}
+#else
+static inline void __init its_acpi_probe(struct irq_domain *parent_domain) { }
+#endif
+
 static struct of_device_id its_device_id[] = {
 	{	.compatible	= "arm,gic-v3-its",	},
 	{},
 };
 
-int its_init(struct device_node *node, struct rdists *rdists,
+int __init its_init(struct device_node *node, struct rdists *rdists,
 	     struct irq_domain *parent_domain)
 {
-	struct device_node *np;
+	if (node) {
+		struct device_node *np;
 
-	for (np = of_find_matching_node(node, its_device_id); np;
-	     np = of_find_matching_node(np, its_device_id)) {
-		its_of_probe(np, parent_domain);
+		for (np = of_find_matching_node(node, its_device_id); np;
+			np = of_find_matching_node(np, its_device_id)) {
+			its_of_probe(np, parent_domain);
+		}
+	} else {
+		its_acpi_probe(parent_domain);
 	}
 
 	if (list_empty(&its_nodes)) {
