@@ -104,6 +104,7 @@ static inline int of_node_is_attached(struct device_node *node)
 #ifdef CONFIG_OF_DYNAMIC
 extern struct device_node *of_node_get(struct device_node *node);
 extern void of_node_put(struct device_node *node);
+extern struct device_node *of_node_alloc(const char *fmt, ...);
 #else /* CONFIG_OF_DYNAMIC */
 /* Dummy ref counting routines - to be implemented later */
 static inline struct device_node *of_node_get(struct device_node *node)
@@ -111,6 +112,10 @@ static inline struct device_node *of_node_get(struct device_node *node)
 	return node;
 }
 static inline void of_node_put(struct device_node *node) { }
+static inline struct device_node *of_node_alloc(const char *fmt, ...)
+{
+	return NULL;
+}
 #endif /* !CONFIG_OF_DYNAMIC */
 
 /* Pointer for first entry in chain of all nodes. */
