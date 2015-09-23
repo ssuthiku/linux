@@ -445,6 +445,28 @@ struct device_node *__of_node_dup(const struct device_node *np, const char *fmt,
 	return NULL;
 }
 
+/**
+ * of_node_alloc() - Allocate an empty device node dynamically.
+ * @fmt: Format string (plus vargs) for new full name of the device node
+ *
+ * Create an device tree node, either by by allocating an empty one
+ * suitable for further modification.  The node data are dynamically
+ * allocated and all the node flags have the OF_DYNAMIC & OF_DETACHED
+ * bits set. Returns the newly allocated node or NULL on out of memory
+ * error.
+ */
+struct device_node *of_node_alloc(const char *fmt, ...)
+{
+	struct device_node *np;
+	va_list vargs;
+
+	va_start(vargs, fmt);
+	np = __of_node_dup(NULL, fmt, vargs);
+	va_end(vargs);
+
+	return np;
+}
+
 static void __of_changeset_entry_destroy(struct of_changeset_entry *ce)
 {
 	of_node_put(ce->np);
