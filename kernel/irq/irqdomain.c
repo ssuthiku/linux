@@ -40,6 +40,11 @@ struct fwnode_handle *irq_domain_alloc_fwnode(void *data)
 	return &of_node->fwnode;
 }
 
+void irq_domain_free_fwnode(struct fwnode_handle *fwnode)
+{
+	of_node_put(to_of_node(fwnode));
+}
+
 /**
  * __irq_domain_add() - Allocate a new irq_domain data structure
  * @of_node: optional device-tree node of the interrupt controller
