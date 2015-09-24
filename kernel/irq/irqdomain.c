@@ -29,6 +29,36 @@ static int irq_domain_alloc_descs(int virq, unsigned int nr_irqs,
 static void irq_domain_check_hierarchy(struct irq_domain *domain);
 
 /**
+ * irq_domain_alloc_fwnode - Allocate a OF-backed fwnode_handle suitable for
+ *                           identifying an irq domain
+ * @data: optional user-provided data
+ *
+ * Allocate a struct device_node, and return a poiner to the embedded
+ * fwnode_handle (or NULL on failure).
+ */
+struct fwnode_handle *irq_domain_alloc_fwnode(void *data)
+{
+	struct device_node *of_node;
+
+	of_node = of_node_alloc("irqdomain@%p", data);
+	if (!of_node)
+		return NULL;
+
+	of_node->data = data;
+	return &of_node->fwnode;
+}
+
+/**
+ * irq_domain_free_fwnode - Free a OF-backed fwnode_handle
+ *
+ * Free a fwnode_handle allocated with irq_domain_alloc_fwnode.
+ */
+void irq_domain_free_fwnode(struct fwnode_handle *fwnode)
+{
+	of_node_put(to_of_node(fwnode));
+}
+
+/**
  * __irq_domain_add() - Allocate a new irq_domain data structure
  * @of_node: optional device-tree node of the interrupt controller
  * @size: Size of linear map; 0 for radix mapping only
