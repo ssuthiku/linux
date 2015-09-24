@@ -33,9 +33,10 @@ struct fwnode_handle *irq_domain_alloc_fwnode(void *data)
 	struct device_node *of_node;
 
 	of_node = of_node_alloc("irqdomain@%p", data);
-	if (of_node)
-		of_node->data = data;
+	if (!of_node)
+		return NULL;
 
+	of_node->data = data;
 	return &of_node->fwnode;
 }
 
