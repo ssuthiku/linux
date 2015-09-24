@@ -28,6 +28,17 @@ static int irq_domain_alloc_descs(int virq, unsigned int nr_irqs,
 				  irq_hw_number_t hwirq, int node);
 static void irq_domain_check_hierarchy(struct irq_domain *domain);
 
+struct fwnode_handle *irq_domain_alloc_fwnode(void *data)
+{
+	struct device_node *of_node;
+
+	of_node = of_node_alloc("irqdomain@%p", data);
+	if (of_node)
+		of_node->data = data;
+
+	return &of_node->fwnode;
+}
+
 /**
  * __irq_domain_add() - Allocate a new irq_domain data structure
  * @of_node: optional device-tree node of the interrupt controller
