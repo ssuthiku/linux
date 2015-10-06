@@ -180,7 +180,8 @@ ssize_t strscpy(char *dest, const char *src, size_t count)
 	size_t max = count;
 	long res = 0;
 
-	if (count == 0)
+	/* Zero length and underflow check: */
+	if (WARN_ONCE((ssize_t)count <= 0, "strscpy(): count < 0 underflow!"))
 		return -E2BIG;
 
 #ifdef CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS
