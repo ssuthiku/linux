@@ -1201,7 +1201,7 @@ gic_of_init(struct device_node *node, struct device_node *parent)
 	}
 
 	if (IS_ENABLED(CONFIG_ARM_GIC_V2M))
-		gicv2m_of_init(node, gic_data[gic_cnt].domain);
+		gicv2m_init(&node->fwnode, gic_data[gic_cnt].domain);
 
 	gic_cnt++;
 	return 0;
@@ -1330,6 +1330,10 @@ gic_v2_acpi_init(struct acpi_table_header *table)
 	__gic_init_bases(0, -1, dist_base, cpu_base, 0, domain_handle);
 
 	acpi_set_irq_model(ACPI_IRQ_MODEL_GIC, domain_handle);
+
+	if (IS_ENABLED(CONFIG_ARM_GIC_V2M))
+		gicv2m_init(NULL, gic_data[0].domain);
+
 	return 0;
 }
 #endif
