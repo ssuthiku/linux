@@ -4542,9 +4542,11 @@ void pci_bus_assign_domain_nr(struct pci_bus *bus, struct device *parent)
 				parent->of_node->full_name);
 			domain = -1;
 		}
+#ifdef CONFIG_ACPI
 	} else {
 		struct acpi_pci_root *root = bus->sysdata;
 		domain = root->segment;
+#endif
 	}
 	bus->domain_nr = domain;
 }
