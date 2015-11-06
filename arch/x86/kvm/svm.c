@@ -1611,6 +1611,41 @@ static int avic_vcpu_init(struct kvm *kvm, struct vcpu_svm *svm, int id)
 	return 0;
 }
 
+static int avic_set_running(struct kvm_vcpu *vcpu, int cpu, bool is_running)
+{
+	u8 g_phy_apic_id;
+	struct svm_avic_phy_ait_entry *entry;
+	struct vcpu_svm *svm = to_svm(vcpu);
+	phys_addr_t pa;
+
+	if (!avic)
+		return 0;
+
+	if (!svm)
+		return -EINVAL;
+
+	/* Note: APIC ID = 0xff is used for broadcast.
+	 *       APIC ID > 0xff is reserved.
+	 */
+	g_phy_apic_id = vcpu->vcpu_id;
+	if (g_phy_apic_id >= 0xff)
+		return -EINVAL;
+
+	entry = avic_get_phy_ait_entry(vcpu, g_phy_apic_id);
+	if (!entry)
+		return -EINVAL;
+
+	pa = PFN_PHYS(page_to_pfn(svm->avic_bk_page));
+	if (is_running) {
+		entry->bk_pg_ptr = (pa >> 12) & 0xffffffffff;
+		entry->valid = 1;
+		entry->host_phy_apic_id = cpu;
+	}
+	entry->is_running = is_running;
+
+	return 0;
+}
+
 static void svm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
@@ -1733,6 +1768,8 @@ static void svm_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 		mark_all_dirty(svm->vmcb);
 	}
 
+	avic_set_running(vcpu, cpu, true);
+
 #ifdef CONFIG_X86_64
 	rdmsrl(MSR_GS_BASE, to_svm(vcpu)->host.gs_base);
 #endif
@@ -1768,6 +1805,9 @@ static void svm_vcpu_put(struct kvm_vcpu *vcpu)
 #endif
 	for (i = 0; i < NR_HOST_SAVE_USER_MSRS; i++)
 		wrmsrl(host_save_user_msrs[i], svm->host_user_msrs[i]);
+
+	avic_set_running(vcpu, 0, false);
+
 }
 
 static unsigned long svm_get_rflags(struct kvm_vcpu *vcpu)
