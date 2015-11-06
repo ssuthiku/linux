@@ -209,6 +209,7 @@ static const struct svm_direct_access_msrs {
 	{ .index = MSR_IA32_LASTBRANCHTOIP,		.always = false },
 	{ .index = MSR_IA32_LASTINTFROMIP,		.always = false },
 	{ .index = MSR_IA32_LASTINTTOIP,		.always = false },
+	{ .index = MSR_IA32_APICBASE,			.always = false },
 	{ .index = MSR_INVALID,				.always = false },
 };
 
@@ -841,7 +842,7 @@ static void set_msr_interception(u32 *msrpm, unsigned msr,
 	msrpm[offset] = tmp;
 }
 
-static void svm_vcpu_init_msrpm(u32 *msrpm)
+static void svm_vcpu_init_msrpm(struct vcpu_svm *svm, u32 *msrpm)
 {
 	int i;
 
@@ -853,6 +854,9 @@ static void svm_vcpu_init_msrpm(u32 *msrpm)
 
 		set_msr_interception(msrpm, direct_access_msrs[i].index, 1, 1);
 	}
+
+	if (svm_vcpu_avic_enabled(svm))
+		set_msr_interception(msrpm, MSR_IA32_APICBASE, 1, 1);
 }
 
 static void add_msr_offset(u32 offset)
@@ -1394,17 +1398,17 @@ static struct kvm_vcpu *svm_create_vcpu(struct kvm *kvm, unsigned int id)
 
 	svm->nested.hsave = page_address(hsave_page);
 
-	svm->msrpm = page_address(msrpm_pages);
-	svm_vcpu_init_msrpm(svm->msrpm);
-
-	svm->nested.msrpm = page_address(nested_msrpm_pages);
-	svm_vcpu_init_msrpm(svm->nested.msrpm);
-
 	svm->vmcb = page_address(page);
 	clear_page(svm->vmcb);
 	svm->vmcb_pa = page_to_pfn(page) << PAGE_SHIFT;
 	svm->asid_generation = 0;
 	init_vmcb(svm);
+
+	svm->msrpm = page_address(msrpm_pages);
+	svm_vcpu_init_msrpm(svm, svm->msrpm);
+
+	svm->nested.msrpm = page_address(nested_msrpm_pages);
+	svm_vcpu_init_msrpm(svm, svm->nested.msrpm);
 
 	svm_init_osvw(&svm->vcpu);
 
@@ -3308,6 +3312,18 @@ static int svm_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 			msr_info->data = 0x1E;
 		}
 		break;
+	case MSR_IA32_APICBASE:
+		if (svm_vcpu_avic_enabled(svm)) {
+			/* Note:
+			 * For AVIC, we need to disable X2APIC
+			 * and enable XAPIC
+			 */
+			kvm_get_msr_common(vcpu, msr_info);
+			msr_info->data &= ~X2APIC_ENABLE;
+			msr_info->data |= XAPIC_ENABLE;
+			break;
+		}
+		/* Follow through if not AVIC */
 	default:
 		return kvm_get_msr_common(vcpu, msr_info);
 	}
@@ -3436,6 +3452,10 @@ static int svm_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr)
 	case MSR_VM_IGNNE:
 		vcpu_unimpl(vcpu, "unimplemented wrmsr: 0x%x data 0x%llx\n", ecx, data);
 		break;
+	case MSR_IA32_APICBASE:
+		if (svm_vcpu_avic_enabled(svm))
+			avic_update_vapic_bar(to_svm(vcpu), data);
+		/* Follow through */
 	default:
 		return kvm_set_msr_common(vcpu, msr);
 	}
@@ -4554,11 +4574,26 @@ static void svm_cpuid_update(struct kvm_vcpu *vcpu)
 
 	/* Update nrips enabled cache */
 	svm->nrips_enabled = !!guest_cpuid_has_nrips(&svm->vcpu);
+
+	/* Do not support X2APIC when enable AVIC */
+	if (svm_vcpu_avic_enabled(svm)) {
+		int i;
+
+		for (i = 0 ; i < vcpu->arch.cpuid_nent ; i++) {
+			if (vcpu->arch.cpuid_entries[i].function == 1)
+				vcpu->arch.cpuid_entries[i].ecx &= ~(1 << 21);
+		}
+	}
 }
 
 static void svm_set_supported_cpuid(u32 func, struct kvm_cpuid_entry2 *entry)
 {
 	switch (func) {
+	case 0x00000001:
+		/* Do not support X2APIC when enable AVIC */
+		if (avic)
+			entry->ecx &= ~(1 << 21);
+		break;
 	case 0x80000001:
 		if (nested)
 			entry->ecx |= (1 << 2); /* Set SVM bit */
