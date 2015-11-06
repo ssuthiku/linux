@@ -35,6 +35,7 @@
 #include <linux/trace_events.h>
 #include <linux/slab.h>
 
+#include <asm/apic.h>
 #include <asm/perf_event.h>
 #include <asm/tlbflush.h>
 #include <asm/desc.h>
@@ -1334,6 +1335,110 @@ free_avic:
 	return err;
 }
 
+static int avic_vcpu_load(struct kvm_vcpu *vcpu, int cpu, bool is_load)
+{
+	int h_phy_apic_id;
+	u64 *entry, new_entry;
+	struct vcpu_svm *svm = to_svm(vcpu);
+	int ret = 0;
+
+	if (!svm_vcpu_avic_enabled(svm))
+		return 0;
+
+	if (!svm)
+		return -EINVAL;
+
+	/* Note: APIC ID = 0xff is used for broadcast.
+	 *       APIC ID > 0xff is reserved.
+	 */
+	h_phy_apic_id = __default_cpu_present_to_apicid(cpu);
+
+	if (h_phy_apic_id >= AVIC_PHY_APIC_ID_MAX)
+		return -EINVAL;
+
+	entry = svm->avic_phy_apic_id_cache;
+	if (!entry)
+		return -EINVAL;
+
+	if (is_load) {
+		new_entry = READ_ONCE(*entry);
+
+		BUG_ON(new_entry & AVIC_PHY_APIC_ID__IS_RUN_MSK);
+
+		new_entry &= ~AVIC_PHY_APIC_ID__HOST_PHY_APIC_ID_MSK;
+		new_entry |= (h_phy_apic_id & AVIC_PHY_APIC_ID__HOST_PHY_APIC_ID_MSK);
+
+		/**
+		 * Restore AVIC running flag if it was set during
+		 * vcpu unload.
+		 */
+		if (svm->avic_was_running)
+			new_entry |= AVIC_PHY_APIC_ID__IS_RUN_MSK;
+		else
+			new_entry &= ~AVIC_PHY_APIC_ID__IS_RUN_MSK;
+
+		WRITE_ONCE(*entry, new_entry);
+
+	} else {
+		new_entry = READ_ONCE(*entry);
+
+		/**
+		 * This handles the case when vcpu is scheduled out
+		 * and has not yet not called blocking. We save the
+		 * AVIC running flag so that we can restore later.
+		 */
+		if (new_entry & AVIC_PHY_APIC_ID__IS_RUN_MSK) {
+			svm->avic_was_running = true;
+			new_entry &= ~AVIC_PHY_APIC_ID__IS_RUN_MSK;
+			WRITE_ONCE(*entry, new_entry);
+		} else {
+			svm->avic_was_running = false;
+		}
+	}
+
+	return ret;
+}
+
+/**
+ * This function is called during VCPU halt/unhalt.
+ */
+static int avic_set_running(struct kvm_vcpu *vcpu, bool is_run)
+{
+	int ret = 0;
+	int h_phy_apic_id;
+	u64 *entry, new_entry;
+	struct vcpu_svm *svm = to_svm(vcpu);
+
+	if (!svm_vcpu_avic_enabled(svm))
+		return 0;
+
+	/* Note: APIC ID = 0xff is used for broadcast.
+	 *       APIC ID > 0xff is reserved.
+	 */
+	h_phy_apic_id = __default_cpu_present_to_apicid(vcpu->cpu);
+
+	if (h_phy_apic_id >= AVIC_PHY_APIC_ID_MAX)
+		return -EINVAL;
+
+	entry = svm->avic_phy_apic_id_cache;
+	if (!entry)
+		return -EINVAL;
+
+	if (is_run) {
+		/* Handle vcpu unblocking after HLT */
+		new_entry = READ_ONCE(*entry);
+		new_entry |= AVIC_PHY_APIC_ID__IS_RUN_MSK;
+		WRITE_ONCE(*entry, new_entry);
+	} else {
+		/* Handle vcpu blocking due to HLT */
+		new_entry = READ_ONCE(*entry);
+		new_entry &= ~AVIC_PHY_APIC_ID__IS_RUN_MSK;
+		WRITE_ONCE(*entry, new_entry);
+	}
+
+	return ret;
+}
+
 static void svm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
@@ -1476,12 +1581,16 @@ static void svm_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	/* This assumes that the kernel never uses MSR_TSC_AUX */
 	if (static_cpu_has(X86_FEATURE_RDTSCP))
 		wrmsrl(MSR_TSC_AUX, svm->tsc_aux);
+
+	avic_vcpu_load(vcpu, cpu, true);
 }
 
 static void svm_vcpu_put(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
 	int i;
+
+	avic_vcpu_load(vcpu, 0, false);
 
 	++vcpu->stat.host_state_reload;
 	kvm_load_ldt(svm->host.ldt);
@@ -1496,6 +1605,16 @@ static void svm_vcpu_put(struct kvm_vcpu *vcpu)
 #endif
 	for (i = 0; i < NR_HOST_SAVE_USER_MSRS; i++)
 		wrmsrl(host_save_user_msrs[i], svm->host_user_msrs[i]);
+}
+
+static void svm_vcpu_blocking(struct kvm_vcpu *vcpu)
+{
+	avic_set_running(vcpu, false);
+}
+
+static void svm_vcpu_unblocking(struct kvm_vcpu *vcpu)
+{
+	avic_set_running(vcpu, true);
 }
 
 static unsigned long svm_get_rflags(struct kvm_vcpu *vcpu)
@@ -4876,6 +4995,8 @@ static struct kvm_x86_ops svm_x86_ops = {
 	.prepare_guest_switch = svm_prepare_guest_switch,
 	.vcpu_load = svm_vcpu_load,
 	.vcpu_put = svm_vcpu_put,
+	.vcpu_blocking = svm_vcpu_blocking,
+	.vcpu_unblocking = svm_vcpu_unblocking,
 
 	.update_bp_intercept = update_bp_intercept,
 	.get_msr = svm_get_msr,
