@@ -380,6 +380,8 @@ DECLARE_STATS_COUNTER(complete_ppr);
 DECLARE_STATS_COUNTER(invalidate_iotlb);
 DECLARE_STATS_COUNTER(invalidate_iotlb_all);
 DECLARE_STATS_COUNTER(pri_requests);
+DECLARE_STATS_COUNTER(galog_max);
+DECLARE_STATS_COUNTER(galog_total);
 
 static struct dentry *stats_dir;
 static struct dentry *de_fflush;
@@ -418,6 +420,8 @@ static void amd_iommu_stats_init(void)
 	amd_iommu_stats_add(&invalidate_iotlb);
 	amd_iommu_stats_add(&invalidate_iotlb_all);
 	amd_iommu_stats_add(&pri_requests);
+	amd_iommu_stats_add(&galog_max);
+	amd_iommu_stats_add(&galog_total);
 }
 
 #endif
@@ -611,14 +615,80 @@ static void iommu_poll_ppr_log(struct amd_iommu *iommu)
 	}
 }
 
+static struct irq_remap_table *get_irq_table(u16 devid, bool ioapic);
+void *amd_iommu_get_irte(struct irq_remap_table *table, int index);
+
+static void iommu_handle_ga_guest_nr_entry(struct amd_iommu *iommu,
+					   u16 devid, u32 ga_tag)
+{
+	struct irq_remap_table *irt = get_irq_table(devid, false);
+	struct irte_ga *irte = amd_iommu_get_irte(irt, ga_tag);
+
+	pr_debug("AMD-Vi: %s: devid=%#x, ga_tag=%#x, irte HI:LO=%#llx:%#llx\n",
+		 __func__, devid, ga_tag,
+		 (unsigned long long)irte->hi.val,
+		 (unsigned long long)irte->lo.val);
+}
+
+static void iommu_poll_ga_log(struct amd_iommu *iommu)
+{
+	u32 head, tail, cnt = 0;
+
+	if (iommu->ga_log == NULL)
+		return;
+
+	head = readl(iommu->mmio_base + MMIO_GA_HEAD_OFFSET);
+	tail = readl(iommu->mmio_base + MMIO_GA_TAIL_OFFSET);
+
+	while (head != tail) {
+		volatile u64 *raw;
+		u64 entry;
+
+		raw = (u64 *)(iommu->ga_log + head);
+		cnt++;
+
+		/* Avoid memcpy function-call overhead */
+		entry = *raw;
+
+		/* Update head pointer of hardware ring-buffer */
+		head = (head + GA_ENTRY_SIZE) % GA_LOG_SIZE;
+		writel(head, iommu->mmio_base + MMIO_GA_HEAD_OFFSET);
+
+		/* Handle GA entry */
+		switch (GA_REQ_TYPE(entry)) {
+		case GA_GUEST_NR:
+			iommu_handle_ga_guest_nr_entry(iommu,
+							GA_DEVID(entry),
+							GA_TAG(entry));
+			break;
+		default:
+			break;
+		}
+
+		/* Refresh ring-buffer information */
+		head = readl(iommu->mmio_base + MMIO_GA_HEAD_OFFSET);
+		tail = readl(iommu->mmio_base + MMIO_GA_TAIL_OFFSET);
+	}
+
+	ADD_STATS_COUNTER(galog_total, cnt);
+
+	if (STATS_COUNTER(galog_max) < cnt)
+		SET_STATS_COUNTER(galog_max, cnt);
+}
+
+#define AMD_IOMMU_INT_MASK	\
+	(MMIO_STATUS_EVT_INT_MASK | \
+	 MMIO_STATUS_PPR_INT_MASK | \
+	 MMIO_STATUS_GALOG_INT_MASK )
+
 irqreturn_t amd_iommu_int_thread(int irq, void *data)
 {
 	struct amd_iommu *iommu = (struct amd_iommu *) data;
 	u32 status = readl(iommu->mmio_base + MMIO_STATUS_OFFSET);
 
-	while (status & (MMIO_STATUS_EVT_INT_MASK | MMIO_STATUS_PPR_INT_MASK)) {
-		/* Enable EVT and PPR interrupts again */
-		writel((MMIO_STATUS_EVT_INT_MASK | MMIO_STATUS_PPR_INT_MASK),
+	while (status & AMD_IOMMU_INT_MASK) {
+		/* Enable EVT and PPR and GA interrupts again */
+		writel(AMD_IOMMU_INT_MASK,
 			iommu->mmio_base + MMIO_STATUS_OFFSET);
 
 		if (status & MMIO_STATUS_EVT_INT_MASK) {
@@ -629,6 +699,11 @@ irqreturn_t amd_iommu_int_thread(int irq, void *data)
 		if (status & MMIO_STATUS_PPR_INT_MASK) {
 			pr_devel("AMD-Vi: Processing IOMMU PPR Log\n");
 			iommu_poll_ppr_log(iommu);
+		}
+
+		if (status & MMIO_STATUS_GALOG_INT_MASK) {
+			pr_devel("AMD-Vi: Processing IOMMU GA Log\n");
+			iommu_poll_ga_log(iommu);
 		}
 
 		/*
