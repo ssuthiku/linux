@@ -1613,6 +1613,19 @@ static int avic_vcpu_init(struct kvm *kvm, struct vcpu_svm *svm, int id)
 	return 0;
 }
 
+static inline int avic_update_iommu(struct kvm_vcpu *vcpu, int cpu,
+				    phys_addr_t pa, bool is_running)
+{
+	struct svm_vm_data *vm_data = vcpu->kvm->arch.arch_data;
+
+	if (!kvm_arch_has_assigned_device(vcpu->kvm))
+		return 0;
+
+	return amd_iommu_update_vapic_base(
+				vcpu->vcpu_id, cpu, vm_data->avic_tag,
+				(pa & AVIC_HPA_MASK), is_running);
+}
+
 static int avic_set_running(struct kvm_vcpu *vcpu, int cpu, bool is_running)
 {
 	u8 g_phy_apic_id;
@@ -1645,7 +1658,7 @@ static int avic_set_running(struct kvm_vcpu *vcpu, int cpu, bool is_running)
 	}
 	entry->is_running = is_running;
 
-	return 0;
+	return avic_update_iommu(vcpu, cpu, pa, is_running);
 }
 
 static void svm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)

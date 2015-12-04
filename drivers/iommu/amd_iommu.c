@@ -4268,4 +4268,74 @@ int amd_iommu_create_irq_domain(struct amd_iommu *iommu)
 
 	return 0;
 }
+
+static int _set_irte_ga(struct amd_iommu *iommu, unsigned int devid,
+			u64 base, int cpu, bool is_run)
+{
+	struct irq_remap_table *irt = get_irq_table(devid, false);
+	unsigned long flags;
+	int index;
+
+	if (!irt)
+		return -ENODEV;
+
+	spin_lock_irqsave(&irt->lock, flags);
+
+	for (index = irt->min_index; index < MAX_IRQS_PER_TABLE; ++index) {
+		struct irte_ga *irte = amd_iommu_get_irte(irt, index);
+
+		if (!irte->lo.fields_vapic.guest_mode)
+			continue;
+
+		irte->lo.fields_vapic.valid = 0;
+		irte->lo.fields_vapic.is_run = is_run;
+		irte->lo.fields_vapic.destination = cpu;
+		irte->hi.fields.ga_root_ptr = (base >> 12);
+		irte->lo.fields_vapic.valid = 1;
+	}
+
+	spin_unlock_irqrestore(&irt->lock, flags);
+
+	iommu_flush_irt(iommu, devid);
+	iommu_completion_wait(iommu);
+
+	return 0;
+}
+
+int amd_iommu_update_vapic_base(u32 vcpu_id, u32 cpu, u32 ga_tag,
+				u64 base, bool is_run)
+{
+	struct amd_iommu *iommu;
+
+	if (amd_iommu_guest_ir < AMD_IOMMU_GUEST_IR_GA)
+		return 0;
+
+	for_each_iommu(iommu) {
+		struct amd_ir_data *ir_data;
+
+		mutex_lock(&iommu->ga_hash_lock);
+
+		hash_for_each_possible(iommu->ga_hash, ir_data, hnode,
+				       AMD_IOMMU_GATAG (ga_tag, vcpu_id)) {
+			struct iommu_dev_data *dev_data;
+
+			if (!ir_data)
+				break;
+
+			dev_data = search_dev_data(ir_data->irq_2_irte.devid);
+
+			if (!dev_data || !dev_data->guest_mode)
+				continue;
+
+			_set_irte_ga(iommu, ir_data->irq_2_irte.devid,
+				     base, cpu, is_run);
+		}
+
+		mutex_unlock(&iommu->ga_hash_lock);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(amd_iommu_update_vapic_base);
+
 #endif
