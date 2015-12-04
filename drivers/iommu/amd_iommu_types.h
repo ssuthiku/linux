@@ -26,6 +26,7 @@
 #include <linux/spinlock.h>
 #include <linux/pci.h>
 #include <linux/irqreturn.h>
+#include <linux/hashtable.h>
 
 /*
  * Maximum number of IOMMUs supported
@@ -118,6 +119,11 @@
 #define MMIO_STATUS_GALOG_RUN_MASK	(1 << 8)
 #define MMIO_STATUS_GALOG_OVERFLOW_MASK	(1 << 9)
 #define MMIO_STATUS_GALOG_INT_MASK	(1 << 10)
+
+#define AMD_IOMMU_GA_HASH_BITS	16
+#define AMD_IOMMU_GA_HASH_MASK	((1U << AMD_IOMMU_GA_HASH_BITS) - 1)
+#define AMD_IOMMU_GATAG(x, y)	\
+	(((x << 8) | (y & 0xFF)) & AMD_IOMMU_GA_HASH_MASK)
 
 /* event logging constants */
 #define EVENT_ENTRY_SIZE	0x10
@@ -596,6 +602,8 @@ struct amd_iommu {
 	struct irq_domain *ir_domain;
 	struct irq_domain *msi_domain;
 #endif
+	DECLARE_HASHTABLE(ga_hash, AMD_IOMMU_GA_HASH_BITS);
+	struct mutex ga_hash_lock;
 };
 
 struct devid_map {

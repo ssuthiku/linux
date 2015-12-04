@@ -100,6 +100,7 @@ struct iommu_dev_data {
 	bool pri_tlp;			  /* PASID TLB required for
 					     PPR completions */
 	u32 errata;			  /* Bitmap for errata to apply */
+	u32 guest_mode;
 };
 
 /*
@@ -3019,6 +3020,10 @@ static void amd_iommu_detach_device(struct iommu_domain *dom,
 	if (!iommu)
 		return;
 
+	if ((amd_iommu_guest_ir >= AMD_IOMMU_GUEST_IR_GA) &&
+	    (dom->type == IOMMU_DOMAIN_UNMANAGED))
+			dev_data->guest_mode = 0;
+
 	iommu_completion_wait(iommu);
 }
 
@@ -3043,6 +3048,12 @@ static int amd_iommu_attach_device(struct iommu_domain *dom,
 		detach_device(dev);
 
 	ret = attach_device(dev, domain);
+
+	if (amd_iommu_guest_ir >= AMD_IOMMU_GUEST_IR_GA)
+		if (dom->type == IOMMU_DOMAIN_UNMANAGED)
+			dev_data->guest_mode = 1;
+		else
+			dev_data->guest_mode = 0;
 
 	iommu_completion_wait(iommu);
 
@@ -3577,6 +3588,7 @@ struct irq_2_irte {
 };
 
 struct amd_ir_data {
+	struct hlist_node			hnode;
 	struct irq_2_irte			irq_2_irte;
 	union irte				irte_entry;
 	struct irte_ga				irte_ga_entry;
@@ -3942,6 +3954,7 @@ static void irq_remapping_prepare_irte(struct amd_ir_data *data,
 	struct irq_2_irte *irte_info = &data->irq_2_irte;
 	struct msi_msg *msg = &data->msi_entry;
 	struct IO_APIC_route_entry *entry;
+	struct iommu_dev_data *dev_data = search_dev_data(devid);
 
 	data->irq_2_irte.devid = devid;
 	data->irq_2_irte.index = index + sub_handle;
@@ -3961,13 +3974,13 @@ static void irq_remapping_prepare_irte(struct amd_ir_data *data,
 
 		irte->lo.val                      = 0;
 		irte->hi.val                      = 0;
-		irte->lo.fields_remap.guest_mode  = 0;
+		irte->lo.fields_remap.guest_mode  = dev_data?
+							dev_data->guest_mode: 0;
 		irte->lo.fields_remap.int_type    = apic->irq_delivery_mode;
 		irte->lo.fields_remap.dm          = apic->irq_dest_mode;
 		irte->lo.fields_remap.valid       = 1;
 		irte->hi.fields.vector            = irq_cfg->vector;
 		irte->lo.fields_remap.destination = irq_cfg->dest_apicid;
-
 	}
 
 	switch (info->type) {
@@ -4134,6 +4147,54 @@ static struct irq_domain_ops amd_ir_domain_ops = {
 	.deactivate = irq_remapping_deactivate,
 };
 
+static int amd_ir_set_vcpu_affinity(struct irq_data *data, void *vcpu_info)
+{
+	struct amd_iommu *iommu;
+	struct amd_iommu_pi_data *pi_data = vcpu_info;
+	struct vcpu_data *vcpu_pi_info = pi_data->vcpu_data;
+	struct amd_ir_data *ir_data = data->chip_data;
+	struct irte_ga *entry = &ir_data->irte_ga_entry;
+	struct irq_2_irte *irte_info = &ir_data->irq_2_irte;
+	struct iommu_dev_data *dev_data = search_dev_data(irte_info->devid);
+
+	if (amd_iommu_guest_ir < AMD_IOMMU_GUEST_IR_GA ||
+	    !dev_data || !dev_data->guest_mode)
+		return 0;
+
+	iommu = amd_iommu_rlookup_table[irte_info->devid];
+	if (iommu == NULL)
+		return -EINVAL;
+
+	mutex_lock(&iommu->ga_hash_lock);
+
+	if (vcpu_pi_info) {
+		/* Setting */
+		entry->hi.fields.vector = vcpu_pi_info->vector;
+		entry->lo.fields_vapic.guest_mode = 1;
+		entry->lo.fields_vapic.ga_tag =
+			AMD_IOMMU_GATAG(pi_data->avic_tag, pi_data->vcpu_id);
+
+		if (!hash_hashed(&ir_data->hnode))
+			hash_add(iommu->ga_hash, &ir_data->hnode,
+				 (u16)(entry->lo.fields_vapic.ga_tag));
+	} else {
+		/* Un-Setting */
+		struct irq_cfg *cfg = irqd_cfg(data);
+
+		entry->hi.fields.vector = cfg->vector;
+		entry->lo.fields_vapic.destination = cfg->dest_apicid;
+		entry->lo.fields_vapic.guest_mode = 0;
+		entry->lo.fields_vapic.ga_tag = 0;
+		entry->lo.fields_vapic.is_run = 0;
+
+		hash_del(&ir_data->hnode);
+	}
+
+	mutex_unlock(&iommu->ga_hash_lock);
+
+	return modify_irte_ga(irte_info->devid, irte_info->index, entry);
+}
+
 static int amd_ir_set_affinity(struct irq_data *data,
 			       const struct cpumask *mask, bool force)
 {
@@ -4141,6 +4202,7 @@ static int amd_ir_set_affinity(struct irq_data *data,
 	struct irq_2_irte *irte_info = &ir_data->irq_2_irte;
 	struct irq_cfg *cfg = irqd_cfg(data);
 	struct irq_data *parent = data->parent_data;
+	struct iommu_dev_data *dev_data = search_dev_data(irte_info->devid);
 	int ret;
 
 	ret = parent->chip->irq_set_affinity(parent, mask, force);
@@ -4156,7 +4218,7 @@ static int amd_ir_set_affinity(struct irq_data *data,
 		ir_data->irte_entry.fields.destination = cfg->dest_apicid;
 		modify_irte(irte_info->devid, irte_info->index,
 			    ir_data->irte_entry);
-	} else {
+	} else if (!dev_data || !dev_data->guest_mode) {
 		struct irte_ga *entry = &ir_data->irte_ga_entry;
 
 		entry->hi.fields.vector = cfg->vector;
@@ -4186,6 +4248,7 @@ static struct irq_chip amd_ir_chip = {
 	.name = "AMD-IR-IRQ-CHIP",
 	.irq_ack = ir_ack_apic_edge,
 	.irq_set_affinity = amd_ir_set_affinity,
+	.irq_set_vcpu_affinity = amd_ir_set_vcpu_affinity,
 	.irq_compose_msi_msg = ir_compose_msi_msg,
 };
 
