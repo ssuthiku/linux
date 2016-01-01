@@ -150,25 +150,23 @@ static struct attribute_group amd_iommu_cpumask_group = {
 static int get_next_avail_iommu_bnk_cntr(struct perf_amd_iommu *perf_iommu)
 {
 	unsigned long flags;
-	int shift, bank, cntr, retval;
-	int max_banks = perf_iommu->max_banks;
-	int max_cntrs = perf_iommu->max_counters;
+	int bank, cntr, retval = -ENOSPC;
 
 	raw_spin_lock_irqsave(&perf_iommu->lock, flags);
 
-	for (bank = 0, shift = 0; bank < max_banks; bank++) {
-		for (cntr = 0; cntr < max_cntrs; cntr++) {
-			shift = bank + (bank*3) + cntr;
-			if (perf_iommu->cntr_assign_mask & (1ULL<<shift)) {
+	for (bank = 0; bank < perf_iommu->max_banks; bank++) {
+		for (cntr = 0; cntr < perf_iommu->max_counters; cntr++) {
+			int shift = (perf_iommu->max_counters * bank) + cntr;
+
+			if (perf_iommu->cntr_assign_mask & (1ULL << shift)) {
 				continue;
 			} else {
-				perf_iommu->cntr_assign_mask |= (1ULL<<shift);
-				retval = ((u16)((u16)bank<<8) | (u8)(cntr));
+				perf_iommu->cntr_assign_mask |= (1ULL << shift);
+				retval = ((u16)((u16)bank << 8) | (u8)(cntr));
 				goto out;
 			}
 		}
 	}
-	retval = -ENOSPC;
 out:
 	raw_spin_unlock_irqrestore(&perf_iommu->lock, flags);
 	return retval;
