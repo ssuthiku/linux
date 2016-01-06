@@ -984,6 +984,8 @@ static __init int svm_hardware_setup(void)
 
 	if (avic) {
 		printk(KERN_INFO "kvm: AVIC enabled\n");
+
+		svm_x86_ops.update_cr8_intercept = NULL;
 	} else {
 		svm_x86_ops.deliver_posted_interrupt = NULL;
 	}
@@ -1097,7 +1099,8 @@ static void init_vmcb(struct vcpu_svm *svm)
 	set_cr_intercept(svm, INTERCEPT_CR0_WRITE);
 	set_cr_intercept(svm, INTERCEPT_CR3_WRITE);
 	set_cr_intercept(svm, INTERCEPT_CR4_WRITE);
-	set_cr_intercept(svm, INTERCEPT_CR8_WRITE);
+	if (!svm_vcpu_avic_enabled(svm))
+		set_cr_intercept(svm, INTERCEPT_CR8_WRITE);
 
 	set_dr_intercepts(svm);
 
@@ -4080,7 +4083,8 @@ static void update_cr8_intercept(struct kvm_vcpu *vcpu, int tpr, int irr)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
 
-	if (is_guest_mode(vcpu) && (vcpu->arch.hflags & HF_VINTR_MASK))
+	if ((is_guest_mode(vcpu) && (vcpu->arch.hflags & HF_VINTR_MASK)) ||
+	     svm_vcpu_avic_enabled(svm))
 		return;
 
 	clr_cr_intercept(svm, INTERCEPT_CR8_WRITE);
@@ -4271,9 +4275,12 @@ static inline void sync_lapic_to_cr8(struct kvm_vcpu *vcpu)
 	if (is_guest_mode(vcpu) && (vcpu->arch.hflags & HF_VINTR_MASK))
 		return;
 
-	cr8 = kvm_get_cr8(vcpu);
+	cr8 = kvm_get_cr8(vcpu) & V_TPR_MASK;
 	svm->vmcb->control.int_ctl &= ~V_TPR_MASK;
-	svm->vmcb->control.int_ctl |= cr8 & V_TPR_MASK;
+	svm->vmcb->control.int_ctl |= cr8;
+
+	if (svm_vcpu_avic_enabled(svm))
+		kvm_lapic_set_reg(svm->vcpu.arch.apic, APIC_TASKPRI, (u32)cr8 << 4);
 }
 
 static void svm_complete_interrupts(struct vcpu_svm *svm)
