@@ -754,6 +754,14 @@ struct kvm_arch {
 
 	bool irqchip_split;
 	u8 nr_reserved_ioapic_pins;
+
+	/* Struct members for AVIC */
+	struct hlist_node hnode;
+	struct kvm *kvm;
+	u32 ldr_mode;
+	u32 avic_tag;
+	struct page *avic_log_apic_id_table_page;
+	struct page *avic_phy_apic_id_table_page;
 };
 
 struct kvm_vm_stat {
