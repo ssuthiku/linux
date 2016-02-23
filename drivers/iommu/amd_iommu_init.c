@@ -2244,6 +2244,19 @@ bool amd_iommu_v2_supported(void)
 }
 EXPORT_SYMBOL(amd_iommu_v2_supported);
 
+static struct amd_iommu *get_amd_iommu(int idx)
+{
+	int i = 0;
+	struct amd_iommu *iommu = NULL;
+
+	for_each_iommu(iommu) {
+		if (i == idx)
+			break;
+		i++;
+	}
+	return iommu;
+}
+
 /****************************************************************************
  *
  * IOMMU EFR Performance Counter support functionality. This code allows
@@ -2251,17 +2264,14 @@ EXPORT_SYMBOL(amd_iommu_v2_supported);
  *
  ****************************************************************************/
 
-u8 amd_iommu_pc_get_max_banks(u16 devid)
+u8 amd_iommu_pc_get_max_banks(int idx)
 {
-	struct amd_iommu *iommu;
-	u8 ret = 0;
+	struct amd_iommu *iommu = get_amd_iommu(idx);
 
-	/* locate the iommu governing the devid */
-	iommu = amd_iommu_rlookup_table[devid];
 	if (iommu)
-		ret = iommu->max_banks;
+		return iommu->max_banks;
 
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL(amd_iommu_pc_get_max_banks);
 
@@ -2271,17 +2281,14 @@ bool amd_iommu_pc_supported(void)
 }
 EXPORT_SYMBOL(amd_iommu_pc_supported);
 
-u8 amd_iommu_pc_get_max_counters(u16 devid)
+u8 amd_iommu_pc_get_max_counters(int idx)
 {
-	struct amd_iommu *iommu;
-	u8 ret = 0;
+	struct amd_iommu *iommu = get_amd_iommu(idx);
 
-	/* locate the iommu governing the devid */
-	iommu = amd_iommu_rlookup_table[devid];
 	if (iommu)
-		ret = iommu->max_counters;
+		return iommu->max_counters;
 
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL(amd_iommu_pc_get_max_counters);
 
