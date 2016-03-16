@@ -7700,6 +7700,8 @@ void kvm_arch_sched_in(struct kvm_vcpu *vcpu, int cpu)
 
 int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 {
+	int ret = 0;
+
 	if (type)
 		return -EINVAL;
 
@@ -7724,7 +7726,10 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	INIT_DELAYED_WORK(&kvm->arch.kvmclock_update_work, kvmclock_update_fn);
 	INIT_DELAYED_WORK(&kvm->arch.kvmclock_sync_work, kvmclock_sync_fn);
 
-	return 0;
+	if (kvm_x86_ops->vm_init)
+		ret = kvm_x86_ops->vm_init(kvm);
+
+	return ret;
 }
 
 static void kvm_unload_vcpu_mmu(struct kvm_vcpu *vcpu)
@@ -7750,6 +7755,9 @@ static void kvm_free_vcpus(struct kvm *kvm)
 	}
 	kvm_for_each_vcpu(i, vcpu, kvm)
 		kvm_arch_vcpu_free(vcpu);
+
+	if (kvm_x86_ops->vm_uninit)
+		kvm_x86_ops->vm_uninit(kvm);
 
 	mutex_lock(&kvm->lock);
 	for (i = 0; i < atomic_read(&kvm->online_vcpus); i++)

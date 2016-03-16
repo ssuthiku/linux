@@ -536,10 +536,6 @@ static struct kvm *kvm_create_vm(unsigned long type)
 	if (!kvm)
 		return ERR_PTR(-ENOMEM);
 
-	r = kvm_arch_init_vm(kvm, type);
-	if (r)
-		goto out_err_no_disable;
-
 	r = hardware_enable_all();
 	if (r)
 		goto out_err_no_disable;
@@ -577,6 +573,10 @@ static struct kvm *kvm_create_vm(unsigned long type)
 	mutex_init(&kvm->slots_lock);
 	atomic_set(&kvm->users_count, 1);
 	INIT_LIST_HEAD(&kvm->devices);
+
+	r = kvm_arch_init_vm(kvm, type);
+	if (r)
+		goto out_err;
 
 	r = kvm_init_mmu_notifier(kvm);
 	if (r)
