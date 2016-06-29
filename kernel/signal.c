@@ -2753,8 +2753,8 @@ int copy_siginfo_to_user(siginfo_t __user *to, const siginfo_t *from)
 int do_sigtimedwait(const sigset_t *which, siginfo_t *info,
 		    const struct timespec *ts)
 {
+	ktime_t *to = NULL, timeout = { .tv64 = KTIME_MAX };
 	struct task_struct *tsk = current;
-	ktime_t timeout = { .tv64 = 0 };
 	sigset_t mask = *which;
 	int sig, ret = 0;
 
@@ -2762,6 +2762,7 @@ int do_sigtimedwait(const sigset_t *which, siginfo_t *info,
 		if (!timespec_valid(ts))
 			return -EINVAL;
 		timeout = timespec_to_ktime(*ts);
+		to = &timeout;
 	}
 
 	/*
@@ -2785,8 +2786,7 @@ int do_sigtimedwait(const sigset_t *which, siginfo_t *info,
 		spin_unlock_irq(&tsk->sighand->siglock);
 
 		__set_current_state(TASK_INTERRUPTIBLE);
-		ret = freezable_schedule_hrtimeout_range(&timeout,
-							 tsk->timer_slack_ns,
+		ret = freezable_schedule_hrtimeout_range(to, tsk->timer_slack_ns,
 							 HRTIMER_MODE_REL);
 		spin_lock_irq(&tsk->sighand->siglock);
 		__set_task_blocked(tsk, &tsk->real_blocked);
