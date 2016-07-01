@@ -531,28 +531,37 @@ __internal_add_timer(struct timer_base *base, struct timer_list *timer)
 static void
 trigger_dyntick_cpu(struct timer_base *base, struct timer_list *timer)
 {
+	if (!IS_ENABLED(CONFIG_NO_HZ_COMMON) || !base->nohz_active)
+		return;
+
+	/*
+	 * This wants some optimizing similar to the below, but we do that
+	 * when we switch from push to pull for deferrable timers.
+	 */
+	if (timer->flags & TIMER_DEFERRABLE) {
+		if (tick_nohz_full_cpu(base->cpu))
+			wake_up_nohz_cpu(base->cpu);
+		return;
+	}
+
 	/*
 	 * We might have to IPI the remote CPU if the base is idle and the
 	 * timer is not deferrable. If the other cpu is on the way to idle
 	 * then it can't set base->is_idle as we hold base lock.
 	 */
-	if (!IS_ENABLED(CONFIG_NO_HZ_COMMON) || !base->is_idle ||
-	    (timer->flags & TIMER_DEFERRABLE))
+	if (!base->is_idle)
 		return;
 
 	/* Check whether this is the new first expiring timer */
 	if (time_after_eq(timer->expires, base->next_expiry))
 		return;
-	base->next_expiry = timer->expires;
 
 	/*
-	 * Check whether the other CPU is in dynticks mode and needs to be
-	 * triggered to reevaluate the timer wheel.  We are protected against
-	 * the other CPU fiddling with the timer by holding the timer base
-	 * lock.
+	 * Set the next expiry time and kick the cpu so it can reevaluate the
+	 * wheel
 	 */
-	if (tick_nohz_full_cpu(base->cpu))
-		wake_up_nohz_cpu(base->cpu);
+	base->next_expiry = timer->expires;
+	wake_up_nohz_cpu(base->cpu);
 }
 
 static void
