@@ -561,7 +561,7 @@ trigger_dyntick_cpu(struct timer_base *base, struct timer_list *timer)
 	 * wheel
 	 */
 	base->next_expiry = timer->expires;
-	wake_up_nohz_cpu(base->cpu);
+		wake_up_nohz_cpu(base->cpu);
 }
 
 static void
@@ -1925,15 +1925,9 @@ static void __sched do_usleep_range(unsigned long min, unsigned long max)
 }
 
 /**
- * usleep_range - Sleep for an approximate time
+ * usleep_range - Drop in replacement for udelay where wakeup is flexible
  * @min: Minimum time in usecs to sleep
  * @max: Maximum time in usecs to sleep
- *
- * In non-atomic context where the exact wakeup time is flexible, use
- * usleep_range() instead of udelay().  The sleep improves responsiveness
- * by avoiding the CPU-hogging busy-wait of udelay(), and the range reduces
- * power usage by allowing hrtimers to take advantage of an already-
- * scheduled interrupt instead of scheduling a new one just for this sleep.
  */
 void __sched usleep_range(unsigned long min, unsigned long max)
 {
