@@ -844,6 +844,7 @@ struct amd_ir_data {
 	union {
 		struct msi_msg msi_entry;
 	};
+	void *ref;	/* Pointer to the actual irte */
 };
 
 #ifdef CONFIG_IRQ_REMAP
