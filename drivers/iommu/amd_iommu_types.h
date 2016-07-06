@@ -27,6 +27,7 @@
 #include <linux/spinlock.h>
 #include <linux/pci.h>
 #include <linux/irqreturn.h>
+#include <linux/hashtable.h>
 
 /*
  * Maximum number of IOMMUs supported
@@ -119,6 +120,14 @@
 #define MMIO_STATUS_GALOG_RUN_MASK	(1 << 8)
 #define MMIO_STATUS_GALOG_OVERFLOW_MASK	(1 << 9)
 #define MMIO_STATUS_GALOG_INT_MASK	(1 << 10)
+
+#define AMD_IOMMU_GA_HASH_BITS	16
+#define AMD_IOMMU_GA_HASH_MASK	((1U << AMD_IOMMU_GA_HASH_BITS) - 1)
+#define AMD_IOMMU_GATAG(x, y)	\
+	((((x & 0xFF) << 8) | (y & 0xFF)) & AMD_IOMMU_GA_HASH_MASK)
+
+#define GATAG_TO_VMID(x)	((x >> 8) & 0xFF)
+#define GATAG_TO_VCPUID(x)	(x & 0xFF)
 
 /* event logging constants */
 #define EVENT_ENTRY_SIZE	0x10
@@ -565,6 +574,16 @@ struct amd_iommu {
 	struct irq_domain *msi_domain;
 
 	struct amd_irte_ops *irte_ops;
+
+	/*
+	 * Hash table for mapping ga_tag to struct amd_ir_data
+	 * which contains interrupt remapping information
+	 * (e.g. cached irte and reference to the entry in the
+	 * table). This is used to avoid IRTE scaning when we need to
+	 * update IRTEs when vCPU is scheduled to a particular CPU.
+	 */
+	DECLARE_HASHTABLE(gatag_ir_hash, AMD_IOMMU_GA_HASH_BITS);
+	spinlock_t gatag_ir_hash_lock;
 #endif
 };
 
@@ -819,6 +838,7 @@ struct amd_irte_ops {
 };
 
 struct amd_ir_data {
+	struct hlist_node hnode;
 	struct irq_2_irte irq_2_irte;
 	void *entry;
 	union {
